@@ -7,7 +7,7 @@
  *   #/<area>/level/<level>[/<strand>]
  *   #/<area>/strand/<strand>[/<level>]
  *   #/<area>/matrix
- *   #/<area>/progression?strands=a,b&subs=business,cyber&scope=selected&levels=third,fourth&show=u,k,d,x,w&layout=down
+ *   #/<area>/progression?strands=a,b&subs=business,cyber&scope=selected&levels=third,fourth&show=u,k,d,x,w
  *   #/<area>/substrand/<sub>[,<sub>…][/<level>][?strand=<strand>]
  */
 (function () {
@@ -381,16 +381,14 @@
   /**
    * Progression grid. Units (selected strands and sub-strands) × levels, each intersection broken
    * into rows for Understand / Know / Do / Includes and notes.
-   *   layout=across (default): levels are columns; each unit is a block of rows.
-   *   layout=down:             units are columns; each level is a block of rows.
-   * Params: strands=a,b  subs=business,cyber  scope=selected  levels=third,fourth  show=u,k,d,x,w  layout=down
+   * Levels are the columns; each unit is a block of rows.
+   * Params: strands=a,b  subs=business,cyber  scope=selected  levels=third,fourth  show=u,k,d,x,w
    * Strands and sub-strands are independent: a sub-strand is shown from every strand it appears in,
    * or only from the selected strands when scope=selected.
    */
   function viewProgression(ix, params) {
     const area = state.area;
     const csv = (k) => (params.get(k) || "").split(",").filter(Boolean);
-    const down = params.get("layout") === "down";
 
     // ---- selection: strands and sub-strands are independent filters
     const subSlugsReq = [...new Set(csv("subs").map((id) => id.split(".").pop()))]; // old links: subs=<strand>.<sub>
@@ -421,7 +419,7 @@
     /** URL for the current selection with some settings changed (null or "" removes a setting). */
     const go = (changes) => {
       const current = { strands: strandKeys.join(","), subs: subKeys.join(","), scope: params.get("scope"),
-        levels: params.get("levels"), show: params.get("show"), layout: params.get("layout") };
+        levels: params.get("levels"), show: params.get("show") };
       const p = new URLSearchParams();
       const next = { ...current, ...changes };
       if (!next.strands) delete next.scope;                    // "only selected strands" needs a strand
@@ -517,49 +515,31 @@
 
     const td = (lvlCode, label, c) => `<td class="p-cell ${lvlClass(lvlCode)} ${c.cls}" data-label="${esc(label)}">${c.html}</td>`;
     const rowHead = (k) => `<th scope="row" class="p-rowhead ${k}">${ROW_LABEL[k]}</th>`;
-    let table;
-    if (!down) {
-      // Levels across: columns are levels; each unit is a block of rows
-      const cols = levels;
-      const body = units.map((u) => {
-        const rows = rowsFor([u], cols).filter((k) => k !== "s" || u.type === "strand");
-        const head = `<tr class="p-group"><th colspan="${cols.length + 1}" scope="rowgroup">${esc(u.label)}<small>${esc(u.note)}</small></th></tr>`;
-        return `<tbody>${head}${rows.map((k, i) =>
-          `<tr>${rowHead(k)}${cols.map((l) => td(l.code, `${l.name} Level`, cell(u, l.code, k, i === 0))).join("")}</tr>`).join("")}</tbody>`;
-      }).join("");
-      table = `<table class="prog" style="--cols:${cols.length}">
-        <caption class="visually-hidden">Progression with levels across</caption>
-        <thead><tr><td class="p-corner"></td>${cols.map((l) => `<th scope="col" class="p-head ${lvlClass(l.code)}">${l.name} Level</th>`).join("")}</tr></thead>
-        ${body}</table>`;
-    } else {
-      // Levels down: columns are units; each level is a block of rows
-      const cols = units;
-      const body = levels.map((l) => {
-        const rows = rowsFor(cols, [l]);
-        const head = `<tr class="p-group"><th colspan="${cols.length + 1}" scope="rowgroup"><span class="lvl-pill ${lvlClass(l.code)}">${l.name} Level</span></th></tr>`;
-        // One Understanding shared by every column at this level is shown once, across the row
-        const uText = (u) => present(u, l.code)
-          ? (u.type === "strand" ? anchorsAt(u.st, l.code) : blocksAt(u.node, l.code)).map((b) => understandingOf(ix, b)).join("\n") : null;
-        const texts = cols.map(uText);
-        const sharedU = cols.length > 1 && texts[0] && texts.every((t) => t === texts[0]);
-        return `<tbody>${head}${rows.map((k, i) => (k === "u" && sharedU)
-          ? `<tr>${rowHead(k)}<td class="p-cell p-ucell p-span ${lvlClass(l.code)}" colspan="${cols.length}" data-label="All columns">${
-              texts[0].split("\n").map((t) => `<p class="p-u">${esc(t)}</p>`).join("")}</td></tr>`
-          : `<tr>${rowHead(k)}${cols.map((u) => td(l.code, u.type === "sub" ? `${u.label} (${u.note})` : u.label, cell(u, l.code, k, i === 0))).join("")}</tr>`).join("")}</tbody>`;
-      }).join("");
-      table = `<table class="prog" style="--cols:${cols.length}">
-        <caption class="visually-hidden">Progression with levels down</caption>
-        <thead><tr><td class="p-corner"></td>${cols.map((u) => `<th scope="col" class="p-head unit ${u.type}">${esc(u.label)}<small>${esc(u.note)}</small></th>`).join("")}</tr></thead>
-        ${body}</table>`;
-    }
+    // ---- the grid: levels are the columns; each strand or sub-strand is a block of rows
+    const cols = levels;
+    const body = units.map((u) => {
+      const rows = rowsFor([u], cols).filter((k) => k !== "s" || u.type === "strand");
+      const head = `<tr class="p-group"><th colspan="${cols.length + 1}" scope="rowgroup">${esc(u.label)}<small>${esc(u.note)}</small></th></tr>`;
+      return `<tbody>${head}${rows.map((k, i) =>
+        `<tr>${rowHead(k)}${cols.map((l) => td(l.code, `${l.name} Level`, cell(u, l.code, k, i === 0))).join("")}</tr>`).join("")}</tbody>`;
+    }).join("");
+    const table = `<table class="prog" style="--cols:${cols.length}">
+      <caption class="visually-hidden">Progression by level</caption>
+      <thead><tr><td class="p-corner"></td>${cols.map((l) => `<th scope="col" class="p-head ${lvlClass(l.code)}">${l.name} Level</th>`).join("")}</tr></thead>
+      ${body}</table>`;
 
     // ---- controls
-    const layoutCtl = `<div class="seg" role="group" aria-label="Layout">
-      <button type="button" aria-pressed="${!down}" data-go="${go({ layout: null })}">Levels across</button>
-      <button type="button" aria-pressed="${down}" data-go="${go({ layout: "down" })}">Levels down</button></div>`;
+    const allStrandKeys = ix.doc.strands.map((x) => x.slug);
+    const allSubKeys = ix.subs.map((x) => x.slug);
+    /** "Select all" for a filter, inactive when everything is already selected. */
+    const selectAll = (done, target) => `<button type="button" class="link-btn" ${done
+      ? 'aria-disabled="true" disabled' : `data-go="${target}"`}>Select all</button>`;
+    const field = (label, all, body) =>
+      `<div class="p-field"><div class="p-labelcol"><span class="p-label">${label}</span>${all}</div><div>${body}</div></div>`;
+
     const strandCtl = `<ul class="chips">${ix.doc.strands.map((st) => {
       const on = strandKeys.includes(st.slug);
-      const next = ix.doc.strands.map((x) => x.slug).filter((x) => (x === st.slug ? !on : strandKeys.includes(x)));
+      const next = allStrandKeys.filter((x) => (x === st.slug ? !on : strandKeys.includes(x)));
       return chip(st.name, on, on && strandKeys.length === 1 && !subKeys.length ? null : go({ strands: next.join(",") || null, levels: null }),
         { why: "Select a sub-strand before removing the last strand" });
     }).join("")}</ul>`;
@@ -588,19 +568,43 @@
       return chip(SHOW_LABEL[k], on, lockedW || lockedLast ? null : go({ show: next.length === SHOW_KEYS.length ? null : next.join(",") }),
         { why: k === "w" ? (!strands.length ? "Select a strand to show its whole-strand rows" : "Select a sub-strand to hide the whole-strand rows") : "At least one row stays visible" });
     }).join("")}</ul>`;
+    const allShown = ["u", "k", "d", "x"].every((k) => show.has(k)) && (show.has("w") || !strands.length || !subUnits.length);
 
-    const unitNames = units.map((u) => (u.type === "sub" ? `${u.label} (${u.note})` : u.label));
+    // ---- summary of the current filters (always visible, also when the panel is collapsed)
+    const some = (names, total, noun) => names.length === total ? `All ${noun}`
+      : names.length > 3 ? `${names.length} of ${total} ${noun}` : listNames(names);
+    const levelText = (() => {
+      const idx = levelKeys.map((c) => LEVELS.findIndex((l) => l.code === c)).sort((x, y) => x - y);
+      const names = idx.map((i) => LEVELS[i].name);
+      const contiguous = idx.every((v, i) => i === 0 || v === idx[i - 1] + 1);
+      return names.length === 1 ? names[0] : contiguous ? `${names[0]} to ${names[names.length - 1]}` : listNames(names);
+    })();
+    const rowsText = ["u", "k", "d", "x"].every((k) => show.has(k)) ? "All rows" : listNames(kinds.map((k) => ROW_LABEL[k]));
+    const summaryItems = [
+      ["Strands", strands.length ? some(strands.map((x) => x.name), ix.doc.strands.length, "strands") : "None"],
+      ["Sub-strands", subSel.length ? some(subSel.map((x) => x.name), ix.subs.length, "sub-strands") + (onlySelected ? ", only in selected strands" : "") : "None"],
+      ["Levels", levelText],
+      ["Showing", rowsText + (strands.length && subUnits.length && !show.has("w") ? ", without whole-strand rows" : "")],
+    ];
+    let collapsed = false;
+    try { collapsed = localStorage.getItem("cic.progression.filtersCollapsed") === "1"; } catch (e) { /* storage unavailable */ }
+
     main.innerHTML = `
       <div class="page-head"><h1>Progression</h1>
-        <p>See how strands and sub-strands develop. Pick any strands, any sub-strands, or both, then show levels across the page or down it.</p></div>
-      <div class="p-controls">
-        ${layoutCtl}
-        <div class="p-field"><span class="p-label">Strands</span>${strandCtl}</div>
-        <div class="p-field"><span class="p-label">Sub-strands</span><div class="p-subs">${subCtl}</div></div>
-        <div class="p-field"><span class="p-label">Levels</span>${levelCtl}</div>
-        <div class="p-field"><span class="p-label">Show</span>${showCtl}</div>
-      </div>
-      <p class="p-summary">${unitNames.length > 4 ? `${unitNames.length} strands and sub-strands` : esc(listNames(unitNames))}, ${levelRange(levelKeys)}.</p>
+        <p>See how strands and sub-strands develop through the levels. Pick any strands, any sub-strands, or both.</p></div>
+      <section class="p-filters${collapsed ? " is-collapsed" : ""}" aria-labelledby="p-filters-title">
+        <div class="p-filterbar">
+          <h2 class="p-ftitle" id="p-filters-title">Filters</h2>
+          <ul class="p-fsummary">${summaryItems.map(([k, v]) => `<li><span>${k}</span> ${esc(v)}</li>`).join("")}</ul>
+          <button type="button" class="p-ftoggle" aria-expanded="${!collapsed}" aria-controls="p-controls">${collapsed ? "Show filters" : "Hide filters"}</button>
+        </div>
+        <div class="p-controls" id="p-controls"${collapsed ? " hidden" : ""}>
+          ${field("Strands", selectAll(strandKeys.length === allStrandKeys.length, go({ strands: allStrandKeys.join(","), levels: null })), strandCtl)}
+          ${field("Sub-strands", selectAll(subKeys.length === allSubKeys.length, go({ subs: allSubKeys.join(","), levels: null })), `<div class="p-subs">${subCtl}</div>`)}
+          ${field("Levels", selectAll(levelKeys.length === levelPool.length, go({ levels: null })), levelCtl)}
+          ${field("Show", selectAll(allShown, go({ show: null })), showCtl)}
+        </div>
+      </section>
       ${table.includes('class="p-sub"') ? `<div class="p-tools">
         <button type="button" class="link-btn" data-details="open">Expand all sub-strands</button>
         <button type="button" class="link-btn" data-details="close">Collapse all</button></div>` : ""}
@@ -662,6 +666,16 @@
 
   // Buttons that navigate (stair, filters)
   main.addEventListener("click", (e) => {
+    const f = e.target.closest("button.p-ftoggle");
+    if (f) {
+      const panel = f.closest(".p-filters"), controls = panel.querySelector(".p-controls");
+      const collapse = f.getAttribute("aria-expanded") === "true";
+      controls.hidden = collapse;
+      panel.classList.toggle("is-collapsed", collapse);
+      f.setAttribute("aria-expanded", String(!collapse));
+      f.textContent = collapse ? "Show filters" : "Hide filters";
+      try { localStorage.setItem("cic.progression.filtersCollapsed", collapse ? "1" : "0"); } catch (err) { /* storage unavailable */ }
+    }
     const t = e.target.closest("button[data-details]");
     if (t) main.querySelectorAll("details.p-sub").forEach((d) => { d.open = t.dataset.details === "open"; });
     const b = e.target.closest("button[data-go]");
