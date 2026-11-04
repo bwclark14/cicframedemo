@@ -1,0 +1,20 @@
+# Source PDFs stay local (draft materials; not committed)
+frameworks/
+
+# Generated review pages embed images of the PDF pages
+model/data/*.review.html
+
+# Build output and dependencies
+model/dist/
+node_modules/
+model/node_modules/
+__pycache__/
+*.pyc
+
+# Local machine files
+.DS_Store
+.claude/settings.local.json
+.vercel/
+
+# Tool caches
+.impeccable/

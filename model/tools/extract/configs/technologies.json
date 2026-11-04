@@ -1,0 +1,46 @@
+{
+  "slug": "technologies",
+  "name": "Technologies",
+  "codePrefix": "TCH",
+  "pdf": "CIC Draft Technical Framework - Technologies - November 2026.pdf",
+  "source": {
+    "title": "CIC Draft Technical Framework - Technologies",
+    "docType": "technical_framework",
+    "version": "1.0",
+    "publishedOn": "2026-11-01",
+    "status": "draft"
+  },
+  "pages": {
+    "purpose": 4,
+    "summary": 5,
+    "strandsFrom": 6,
+    "strandsTo": 31
+  },
+  "strandCodes": {
+    "Identify, Define, Explore and Articulate (IDEAs)": "IDEAS",
+    "Make It Happen": "MIH",
+    "Systems": "SYS",
+    "People and Planet": "PAP",
+    "A Data Rich World": "DATA",
+    "Digital World": "DIG"
+  },
+  "summaryStrandNames": {
+    "Identify, Define, Explore and Articulate": "Identify, Define, Explore and Articulate (IDEAs)"
+  },
+  "subStrandAliases": {
+    "Design & Engineering": "Design and Engineering"
+  },
+  "subStrandCodes": {
+    "Business": "BUS",
+    "Design and Engineering": "DE",
+    "Computing Science": "CS",
+    "Cyber": "CYB",
+    "Digital Media": "DMEDIA",
+    "Media": "MEDIA",
+    "Crafting": "CRAFT",
+    "Computing": "COMP",
+    "Engineering": "ENG",
+    "Digital Skills": "DSKILL",
+    "Information Skills": "ISKILL"
+  }
+}

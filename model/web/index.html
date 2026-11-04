@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Curriculum Explorer</title>
+  <meta name="description" content="Browse the CIC Know-Do-Understand frameworks by level, strand and sub-strand.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site">
+    <div class="site-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <span class="brand-text">
+          <span class="brand-title">Curriculum Explorer</span>
+          <span class="brand-area" id="area-name"></span>
+        </span>
+      </div>
+      <label class="area-pick" id="area-pick" hidden>
+        <span class="visually-hidden">Curriculum area</span>
+        <select id="area-select"></select>
+      </label>
+      <nav class="primary" aria-label="Views">
+        <a data-view="overview">Purpose and big ideas</a>
+        <a data-view="matrix">Understandings</a>
+        <a data-view="progression">Progression</a>
+        <a data-view="level">By level</a>
+        <a data-view="strand">By strand</a>
+        <a data-view="substrand">By sub-strand</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <p class="loading">Loading the curriculum…</p>
+  </main>
+
+  <footer class="site-foot">
+    <p id="source-note"></p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+{
+  "area": "re-roman-catholic",
+  "source": {
+    "title": "CIC - Religious Education Roman Catholic - Scripture Texts",
+    "docType": "supplementary_list",
+    "version": "1.0"
+  },
+  "entries": [
+    {
+      "kind": "scripture_text",
+      "level": "early",
+      "node": "exploring-word-of-god",
+      "body": "Hear, recall and respond to one of the following Old Testament passages",
+      "refSelection": "choose",
+      "references": [
+        {
+          "citation": "Genesis 1",
+          "book": "Genesis",
+          "chapterStart": 1,
+          "label": "The 1st account of Genesis"
+        },
+        {
+          "citation": "Genesis 6",
+          "book": "Genesis",
+          "chapterStart": 6,
+          "label": "The Flood"
+        },
+        {
+          "citation": "Exodus 2",
+          "book": "Exodus",
+          "chapterStart": 2,
+          "label": "The birth of Moses"
+        }
+      ],
+      "refChooseMin": 1
+    },
+    {
+      "kind": "scripture_text",
+      "level": "first",
+      "stage": "P2",
+      "node": "exploring-word-of-god",
+      "body": "Hear, read and recount two or more of the following narratives from the Bible about people who listened to God’s Word and responded to it",
+      "refSelection": "choose",
+      "refChooseMin": 2,
+      "references": [
+        {
+          "citation": "Genesis 12",
+          "book": "Genesis",
+          "chapterStart": 12,
+          "label": "the call of Abraham"
+        },
+        {
+          "citation": "Exodus 3",
+          "book": "Exodus",
+          "chapterStart": 3,
+          "label": "the mission of Moses"
+        },
+        {
+          "citation": "1 Samuel 3",
+          "book": "1 Samuel",
+          "chapterStart": 3,
+          "label": "God calls Samuel"
+        },
+        {
+          "citation": "Luke 3: 1-6",
+          "book": "Luke",
+          "chapterStart": 3,
+          "verseStart": 1,
+          "verseEnd": 6,
+          "label": "the preaching of John the Baptist"
+        },
+        {
+          "citation": "Luke 5: 1-11",
+          "book": "Luke",
+          "chapterStart": 5,
+          "verseStart": 1,
+          "verseEnd": 11,
+          "label": "the first four disciples are called"
+        }
+      ]
+    }
+  ]
+}

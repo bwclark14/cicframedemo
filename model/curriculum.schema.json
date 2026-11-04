@@ -1,0 +1,639 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cic.example/schemas/curriculum.schema.json",
+  "title": "CIC Curriculum",
+  "description": "Interchange format for the CIC curriculum: one document per curriculum area (import/export and GET /areas/{slug}?expand=tree), plus the resolved shapes returned by the read API.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/AreaDocument"
+    },
+    {
+      "$ref": "#/$defs/GuidanceDocument"
+    }
+  ],
+  "$defs": {
+    "LevelCode": {
+      "enum": [
+        "foundation",
+        "early",
+        "first",
+        "second",
+        "third",
+        "fourth",
+        "senior"
+      ]
+    },
+    "StageCode": {
+      "enum": [
+        "ELC",
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P5",
+        "P6",
+        "P7",
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S6"
+      ]
+    },
+    "Slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "Code": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]+(\\.[A-Z0-9]+)*$"
+    },
+    "Translations": {
+      "description": "Per-language overrides keyed by BCP 47 tag, e.g. {\"gd\": {\"name\": \"Feartan na Gàidhlig\"}}.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    },
+    "SourceRef": {
+      "type": "object",
+      "required": [
+        "title",
+        "version"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "docType": {
+          "enum": [
+            "technical_framework",
+            "asn_milestones",
+            "progression_guidance",
+            "supplementary_list",
+            "compilation",
+            "overview"
+          ]
+        },
+        "version": {
+          "type": "string"
+        },
+        "publishedOn": {
+          "type": "string",
+          "format": "date"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "final",
+            "superseded"
+          ]
+        },
+        "fileName": {
+          "type": "string"
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "AreaDocument": {
+      "type": "object",
+      "required": [
+        "slug",
+        "name",
+        "strands"
+      ],
+      "properties": {
+        "slug": {
+          "$ref": "#/$defs/Slug"
+        },
+        "name": {
+          "type": "string"
+        },
+        "family": {
+          "type": "string"
+        },
+        "contentLanguage": {
+          "type": "string",
+          "default": "en"
+        },
+        "purposeStatement": {
+          "type": "string"
+        },
+        "translations": {
+          "$ref": "#/$defs/Translations"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "bigIdeas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "translations": {
+                "$ref": "#/$defs/Translations"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "strands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Node"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "Node": {
+      "description": "A structural node. Strands are top-level; children nest as sub-strands and sub-sub-strands.",
+      "type": "object",
+      "required": [
+        "slug",
+        "name",
+        "levels"
+      ],
+      "properties": {
+        "slug": {
+          "$ref": "#/$defs/Slug"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "translations": {
+          "$ref": "#/$defs/Translations"
+        },
+        "bigIdeas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Names of Big Ideas this node draws on."
+        },
+        "levels": {
+          "description": "Levels at which this node exists.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LevelCode"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Block"
+          }
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Node"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "Block": {
+      "description": "A content block bound to its enclosing node and one level. Exactly one of `understanding` (this block is an anchor) or `anchor` (code of an anchor block on this node or an ancestor, same level) is present.",
+      "type": "object",
+      "required": [
+        "code",
+        "level"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/Code"
+        },
+        "level": {
+          "$ref": "#/$defs/LevelCode"
+        },
+        "understanding": {
+          "type": "string",
+          "minLength": 1
+        },
+        "anchor": {
+          "$ref": "#/$defs/Code"
+        },
+        "doQualifier": {
+          "type": "string",
+          "description": "Heading qualifier on the Do column, e.g. 'through play, everyday routines, games, songs, stories and rhymes'."
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "statements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Statement"
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "understanding"
+          ],
+          "not": {
+            "required": [
+              "anchor"
+            ]
+          }
+        },
+        {
+          "required": [
+            "anchor"
+          ],
+          "not": {
+            "required": [
+              "understanding"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "Statement": {
+      "type": "object",
+      "required": [
+        "code",
+        "kind",
+        "body"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/Code"
+        },
+        "kind": {
+          "enum": [
+            "know",
+            "do",
+            "note",
+            "includes",
+            "excludes",
+            "vocabulary",
+            "milestone"
+          ]
+        },
+        "phase": {
+          "enum": [
+            "beginning",
+            "end"
+          ],
+          "description": "Beginning / End of level (Numeracy and Mathematics, ASN Milestones)."
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Markdown permitted for bullet lists."
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ResolvedBlock": {
+      "description": "Read-API shape: GET /blocks/{code}. Understanding is resolved from the anchor; statements grouped by kind.",
+      "type": "object",
+      "required": [
+        "code",
+        "area",
+        "node",
+        "level",
+        "understanding",
+        "isAnchor"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/Code"
+        },
+        "area": {
+          "type": "object",
+          "required": [
+            "slug",
+            "name"
+          ],
+          "properties": {
+            "slug": {
+              "$ref": "#/$defs/Slug"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "node": {
+          "type": "object",
+          "required": [
+            "path",
+            "type",
+            "name"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "strand",
+                "sub_strand",
+                "sub_sub_strand"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "breadcrumb": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "level": {
+          "$ref": "#/$defs/LevelCode"
+        },
+        "understanding": {
+          "type": "string"
+        },
+        "isAnchor": {
+          "type": "boolean"
+        },
+        "anchor": {
+          "$ref": "#/$defs/Code"
+        },
+        "know": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Statement"
+          }
+        },
+        "do": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Statement"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Statement"
+          }
+        },
+        "includes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Statement"
+          }
+        },
+        "vocabulary": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Statement"
+          }
+        },
+        "milestones": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Statement"
+          }
+        },
+        "siblings": {
+          "description": "For an anchor: codes of the blocks that inherit its understanding (e.g. subject sub-strands).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Code"
+          }
+        },
+        "excludes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Statement"
+          }
+        }
+      }
+    },
+    "GuidanceDocument": {
+      "type": "object",
+      "required": [
+        "area",
+        "source",
+        "entries"
+      ],
+      "properties": {
+        "area": {
+          "$ref": "#/$defs/Slug"
+        },
+        "language": {
+          "type": "object",
+          "required": [
+            "code",
+            "name"
+          ],
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GuidanceEntry"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "GuidanceEntry": {
+      "type": "object",
+      "required": [
+        "kind",
+        "body"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "introduction",
+            "level_descriptor",
+            "progression_example",
+            "language_exemplar",
+            "grammar_progression",
+            "commentary",
+            "suggested_context",
+            "scripture_text"
+          ]
+        },
+        "level": {
+          "$ref": "#/$defs/LevelCode"
+        },
+        "stage": {
+          "$ref": "#/$defs/StageCode"
+        },
+        "node": {
+          "type": "string",
+          "description": "Node path within the area, e.g. 'exploring-word-of-god'."
+        },
+        "block": {
+          "$ref": "#/$defs/Code"
+        },
+        "mode": {
+          "enum": [
+            "receptive",
+            "productive"
+          ]
+        },
+        "topic": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1
+        },
+        "refSelection": {
+          "enum": [
+            "all",
+            "choose",
+            "examples"
+          ]
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "citation",
+              "book",
+              "chapterStart"
+            ],
+            "properties": {
+              "citation": {
+                "type": "string"
+              },
+              "book": {
+                "type": "string"
+              },
+              "chapterStart": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "verseStart": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "chapterEnd": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "verseEnd": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "refChooseMin": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "With refSelection 'choose': 'one of' = 1, 'two or more of' = 2."
+        }
+      },
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "scripture_text"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "level",
+          "node"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "refSelection"
+              ]
+            },
+            {
+              "required": [
+                "refChooseMin"
+              ]
+            },
+            {
+              "required": [
+                "references"
+              ]
+            }
+          ]
+        },
+        "description": "refSelection, refChooseMin and references are only allowed on scripture_text entries."
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "refSelection": {
+                "const": "choose"
+              }
+            },
+            "required": [
+              "refSelection"
+            ]
+          },
+          "then": {
+            "required": [
+              "refChooseMin"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "refChooseMin"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

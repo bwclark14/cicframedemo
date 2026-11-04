@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "curriculum-explorer",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8080",
+        "--directory",
+        "model"
+      ],
+      "port": 8080
+    },
+    {
+      "name": "explorer-build",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8092",
+        "--directory",
+        "model/dist"
+      ],
+      "port": 8092
+    }
+  ]
+}

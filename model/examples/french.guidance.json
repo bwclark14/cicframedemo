@@ -1,0 +1,15 @@
+{
+  "area": "languages",
+  "language": { "code": "fr", "name": "French" },
+  "source": { "title": "CIC – Languages – Progression Guidance French", "docType": "progression_guidance", "version": "1.0", "publishedOn": "2026-11-01" },
+  "entries": [
+    { "kind": "level_descriptor", "level": "early", "topic": "Words and Short Phrases", "body": "Words and Short Phrases describes highly familiar individual words or groups of words associated with highly familiar contexts, routines and experiences." },
+    { "kind": "language_exemplar", "level": "early", "mode": "receptive", "body": "un chat, un chien, une pomme" },
+    { "kind": "language_exemplar", "level": "early", "mode": "productive", "body": "je m’appelle" },
+    { "kind": "commentary", "level": "early", "body": "Understanding may be shown through an action, gesture, facial expression, selecting, matching or pointing. A spoken response is not always required." },
+    { "kind": "suggested_context", "level": "early", "body": "greetings" },
+    { "kind": "grammar_progression", "level": "early", "mode": "receptive", "topic": "Nouns and articles", "body": "Articles are used with nouns (e.g. une banane, le chat)" },
+    { "kind": "grammar_progression", "level": "early", "mode": "productive", "topic": "Nouns and articles", "body": "Articles with nouns (e.g. une banane, le chat) when modelled" },
+    { "kind": "progression_example", "level": "first", "mode": "productive", "topic": "Expressing a view or preference", "body": "Learners may reuse familiar patterns such as J’aime le foot. C’est super! Je n’aime pas le basket." }
+  ]
+}

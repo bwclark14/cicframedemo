@@ -1,0 +1,9 @@
+{
+  "areas": [
+    {
+      "slug": "technologies",
+      "name": "Technologies",
+      "file": "technologies.area.json"
+    }
+  ]
+}

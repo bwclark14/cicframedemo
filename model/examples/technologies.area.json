@@ -1,0 +1,108 @@
+{
+  "slug": "technologies",
+  "name": "Technologies",
+  "purposeStatement": "Learners use ethical, sustainable and innovative approaches to address real-world challenges, connecting theory and practice through technological activity. This supports them to become adaptable and socially aware citizens who can participate in and contribute to a dynamic, inclusive and rapidly evolving world.",
+  "source": {
+    "title": "CIC Draft Technical Framework - Technologies",
+    "docType": "technical_framework",
+    "version": "1.0",
+    "publishedOn": "2026-11-01",
+    "status": "draft",
+    "fileName": "CIC Draft Technical Framework - Technologies - November 2026.pdf"
+  },
+  "bigIdeas": [
+    { "name": "Understanding Our World", "description": "We live in a complex world full of physical, digital, social and economic systems. Modern living requires critically evaluating the products and decisions that shape the world around us and understanding how data is created and used and how systems recognise patterns." },
+    { "name": "Innovation", "description": "Engaging with our world requires the confident use of tools, materials and processes to create products and services. Practical skills such as designing, making, testing and refining are essential to tackling real-world challenges." },
+    { "name": "Shaping Our Future", "description": "Every technological decision has economic, environmental and social impacts. By critiquing the implications of technology, learners develop the capacity to make responsible choices and actively shape a more sustainable and equitable future." }
+  ],
+  "strands": [
+    {
+      "slug": "ideas",
+      "name": "Identify, Define, Explore and Articulate (IDEAs)",
+      "levels": ["early", "first", "second", "third", "fourth"],
+      "blocks": [
+        {
+          "code": "TCH.IDEAS.E.1",
+          "level": "early",
+          "understanding": "Ideas can be developed into solutions that address needs and solve problems.",
+          "source": { "title": "CIC Draft Technical Framework - Technologies", "version": "1.0", "page": 4 },
+          "statements": [
+            { "code": "TCH.IDEAS.E.1.K1", "kind": "know", "body": "A design is a plan showing how something is to be built or carried out, or the way that something is put together." },
+            { "code": "TCH.IDEAS.E.1.K2", "kind": "know", "body": "Ideas do not always work out as planned." },
+            { "code": "TCH.IDEAS.E.1.D1", "kind": "do", "body": "Experiment with materials, tools and technology to share design ideas." },
+            { "code": "TCH.IDEAS.E.1.D2", "kind": "do", "body": "Represent design ideas through mark making and sketching." }
+          ]
+        },
+        {
+          "code": "TCH.IDEAS.3.1",
+          "level": "third",
+          "understanding": "Ideas are developed through an iterative process of analysing needs, generating solutions, testing outcomes and refining designs based on evidence."
+        }
+      ],
+      "children": [
+        {
+          "slug": "business",
+          "name": "Business",
+          "levels": ["third", "fourth"],
+          "blocks": [
+            {
+              "code": "TCH.IDEAS.BUS.3.1",
+              "level": "third",
+              "anchor": "TCH.IDEAS.3.1",
+              "statements": [
+                { "code": "TCH.IDEAS.BUS.3.1.K1", "kind": "know", "body": "Entrepreneurial thinking is about identifying opportunities to create or improve products, services or processes." },
+                { "code": "TCH.IDEAS.BUS.3.1.D1", "kind": "do", "body": "Prepare a business pitch for the idea, initiative or solution." },
+                { "code": "TCH.IDEAS.BUS.3.1.I1", "kind": "includes", "body": "Enterprise activities that include problem solving and creative initiatives that build an entrepreneurial mindset, such as:\n- coming up with new product or service ideas in response to a brief\n- project-based learning" }
+              ]
+            }
+          ]
+        },
+        {
+          "slug": "design-engineering",
+          "name": "Design and Engineering",
+          "levels": ["third", "fourth"],
+          "blocks": [
+            {
+              "code": "TCH.IDEAS.DE.3.1",
+              "level": "third",
+              "anchor": "TCH.IDEAS.3.1",
+              "statements": [
+                { "code": "TCH.IDEAS.DE.3.1.K1", "kind": "know", "body": "Briefs identify opportunities and constraints to a scenario or situation." },
+                { "code": "TCH.IDEAS.DE.3.1.D1", "kind": "do", "body": "Critique existing products, services or systems against criteria." }
+              ]
+            }
+          ]
+        },
+        {
+          "slug": "computing-science",
+          "name": "Computing Science",
+          "levels": ["third", "fourth"],
+          "blocks": [
+            {
+              "code": "TCH.IDEAS.CS.3.1",
+              "level": "third",
+              "anchor": "TCH.IDEAS.3.1",
+              "statements": [
+                { "code": "TCH.IDEAS.CS.3.1.K1", "kind": "know", "body": "Prototypes are used to test ideas and gather feedback before implementation." },
+                { "code": "TCH.IDEAS.CS.3.1.D1", "kind": "do", "body": "Test solutions against success criteria." },
+                { "code": "TCH.IDEAS.CS.3.1.N1", "kind": "note", "body": "Computational thinking underpins the development process." }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "data-rich-world",
+      "name": "A Data Rich World",
+      "levels": ["third", "fourth"],
+      "blocks": [
+        {
+          "code": "TCH.DATA.3.1",
+          "level": "third",
+          "understanding": "Data has value and decisions become more informed when data sources, quality and patterns are critically analysed."
+        }
+      ]
+    }
+  ]
+}
