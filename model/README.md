@@ -150,7 +150,7 @@ A static site in `web/` (plain HTML, CSS and JavaScript, no build step) that rea
   - *Levels across:* levels are the columns; each strand or sub-strand is a block of rows (Understand, Know, Do, Includes and notes).
   - *Levels down:* each strand or sub-strand is a column; each level is a block of rows. One level with several sub-strands gives a side-by-side comparison within that level.
 
-  Rows can be hidden, including the whole-strand rows. All settings are in the URL, e.g. `#/technologies/progression?subs=business,cyber&levels=third,fourth&layout=down`.
+  Where a strand is split into sub-strands, its Know, Do and notes cells hold each sub-strand's statements in collapsible sections (with "Expand all" / "Collapse all"). Rows can be hidden, including the whole-strand rows. All settings are in the URL, e.g. `#/technologies/progression?subs=business,cyber&levels=third,fourth&layout=down`.
 - **By level:** every strand at one level, with its Understanding, Know, Do, Includes, Excludes and Notes.
 - **By strand:** the Understanding at each level, then each level in full.
 - **By sub-strand:** select one or more sub-strands to see them gathered from every strand they appear in, grouped by level and filterable by strand. The selection is part of the URL (e.g. `#/technologies/substrand/business,cyber`), so it can be bookmarked.

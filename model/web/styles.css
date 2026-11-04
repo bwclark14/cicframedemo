@@ -301,6 +301,25 @@ button.tag { appearance: none; cursor: pointer; font: inherit; font-size: 0.8125
 .p-src { display: block; margin-top: 4px; font-size: 0.75rem; color: var(--muted); }
 .p-cell.p-inherit { background: transparent; }
 
+/* Sub-strand content inside whole-strand cells */
+.p-tools { display: flex; gap: 16px; margin: -4px 0 12px; }
+.p-sublabel { font-size: 0.75rem; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+details.p-sub { border-top: 1px dashed var(--rule-strong); padding: 6px 0 2px; }
+.p-sublabel + .p-list + details.p-sub, .p-sublabel + div + details.p-sub { margin-top: 8px; }
+details.p-sub:first-child { border-top: 0; padding-top: 0; }
+details.p-sub > summary {
+  cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: 6px; padding: 2px 0; font-weight: 700;
+}
+details.p-sub > summary::-webkit-details-marker { display: none; }
+details.p-sub > summary::before {
+  content: ""; flex: none; width: 0; height: 0; border-style: solid; border-width: 4px 0 4px 6px;
+  border-color: transparent transparent transparent currentColor; transform: translateY(-1px); transition: transform 120ms ease;
+}
+details.p-sub[open] > summary::before { transform: translateY(-1px) rotate(90deg); }
+details.p-sub > summary:hover .p-subname { text-decoration: underline; }
+.p-count { font-weight: 400; color: var(--muted); }
+details.p-sub > .p-list, details.p-sub > .p-extra, details.p-sub > .p-none { margin: 4px 0 6px 12px; display: block; }
+
 /* Sections --------------------------------------------------------------- */
 .strand-section, .level-section { padding-top: 28px; margin-top: 28px; border-top: 2px solid var(--ink); }
 .strand-section:first-of-type, .level-section:first-of-type { margin-top: 0; }

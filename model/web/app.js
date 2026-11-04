@@ -462,14 +462,16 @@
         title="${on ? "Remove" : "Add"} ${esc(c.name)} ${on ? "from" : "to"} the comparison">${esc(c.name)}</button></li>`;
     }).join("")}</ul>`;
     const present = (unit, lv) => unit.node.levels.includes(lv);
-    const strandHasSubsAt = (st, lv) => (st.children || []).some((c) => c.levels.includes(lv));
+    const subsAt = (st, lv) => (st.children || []).filter((c) => c.levels.includes(lv));
+    const strandHasSubsAt = (st, lv) => subsAt(st, lv).length > 0;
 
     /** Rows for a block: the visible kinds, plus a Sub-strands row where a whole strand splits into sub-strands. */
     const rowsFor = (unitList, lvList) => {
       // A Know/Do/notes row is worth showing if some cell in it holds statements, or is a place where
       // statements belong (a sub-strand, or a strand taught as one) and so "None" is real information.
       const useful = (k) => k === "u" || unitList.some((u) => lvList.some((l) => present(u, l.code) && (
-        u.type === "sub" || !strandHasSubsAt(u.st, l.code) || stmts(anchorsAt(u.st, l.code), KINDS[k]).length)));
+        u.type === "sub" || !strandHasSubsAt(u.st, l.code) || stmts(anchorsAt(u.st, l.code), KINDS[k]).length ||
+        subsAt(u.st, l.code).some((c) => stmts(blocksAt(c, l.code), KINDS[k]).length))));
       const rows = kinds.filter(useful);
       if (unitList.some((u) => u.type === "strand" && lvList.some((l) => strandHasSubsAt(u.st, l.code)))) rows.push("s");
       return rows.length ? rows : ["s"];
@@ -490,8 +492,17 @@
           return { html: here.length ? subTags(u.st, here) : none("Taught as one strand"), cls: "" };
         }
         const items = stmts(anchors, KINDS[k]);
-        if (!items.length && strandHasSubsAt(u.st, lv) && k !== "x") return { html: none("In the sub-strands"), cls: "p-muted" };
-        return { html: k === "x" ? extrasCell(items) : listCell(items), cls: "" };
+        const render = (list) => (k === "x" ? extrasCell(list) : listCell(list));
+        const here = subsAt(u.st, lv);
+        if (!here.length) return { html: render(items), cls: "" };          // taught as one strand
+        // Strand split into sub-strands: whole-strand statements first, then each sub-strand, collapsible
+        const own = items.length ? `<p class="p-sublabel">Across the whole strand</p>${render(items)}` : "";
+        const parts = here.map((c) => {
+          const si = stmts(blocksAt(c, lv), KINDS[k]);
+          if (!si.length) return "";
+          return `<details class="p-sub"><summary><span class="p-subname">${esc(c.name)}</span><span class="p-count">(${si.length})</span></summary>${render(si)}</details>`;
+        }).join("");
+        return { html: own + parts || none(), cls: "" };
       }
       const blocks = blocksAt(u.node, lv);
       if (k === "u") {
@@ -590,6 +601,9 @@
         <div class="p-field"><span class="p-label">Show</span>${showCtl}</div>
       </div>
       <p class="p-summary">${unitNames.length > 4 ? `${unitNames.length} strands and sub-strands` : esc(listNames(unitNames))}, ${levelRange(levelKeys)}.</p>
+      ${table.includes('class="p-sub"') ? `<div class="p-tools">
+        <button type="button" class="link-btn" data-details="open">Expand all sub-strands</button>
+        <button type="button" class="link-btn" data-details="close">Collapse all</button></div>` : ""}
       <div class="prog-wrap">${table}</div>`;
     document.title = `Progression · ${ix.doc.name} · Curriculum Explorer`;
   }
@@ -648,6 +662,8 @@
 
   // Buttons that navigate (stair, filters)
   main.addEventListener("click", (e) => {
+    const t = e.target.closest("button[data-details]");
+    if (t) main.querySelectorAll("details.p-sub").forEach((d) => { d.open = t.dataset.details === "open"; });
     const b = e.target.closest("button[data-go]");
     if (b && b.dataset.go.startsWith("#")) location.hash = b.dataset.go;
   });
