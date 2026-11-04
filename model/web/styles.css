@@ -287,7 +287,9 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
 button.tag { appearance: none; cursor: pointer; font: inherit; font-size: 0.8125rem; color: inherit; }
 .tag[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
-.p-subs { display: grid; gap: 8px; }
+.p-subs { display: grid; gap: 10px; }
+.p-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.p-scope .p-hint { margin: 0; padding: 0; }
 .p-subrow { display: grid; grid-template-columns: minmax(8rem, 13rem) minmax(0, 1fr); gap: 4px 10px; align-items: start; }
 .p-substrand { font-size: var(--step--1); padding-top: 9px; }
 .p-subrow .p-hint { margin-top: 0; padding-top: 9px; }

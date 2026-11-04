@@ -7,7 +7,7 @@
  *   #/<area>/level/<level>[/<strand>]
  *   #/<area>/strand/<strand>[/<level>]
  *   #/<area>/matrix
- *   #/<area>/progression?strands=a,b&subs=<strand>.<sub>,…&levels=third,fourth&show=u,k,d,x,w&layout=down
+ *   #/<area>/progression?strands=a,b&subs=business,cyber&scope=selected&levels=third,fourth&show=u,k,d,x,w&layout=down
  *   #/<area>/substrand/<sub>[,<sub>…][/<level>][?strand=<strand>]
  */
 (function () {
@@ -312,7 +312,7 @@
       <div class="page-head"><h1>${esc(title)}</h1><p>${intro}</p>${strandFilter || strands.length === 1 ? (() => {
         const st = strandFilter ? strands.find((x) => x.slug === strandFilter) : strands[0];
         const subs = selected.filter((sub) => sub.entries.some((e) => e.strand === st)).map((sub) => sub.slug);
-        return `<p class="page-links"><a href="${href(area, "progression")}?strands=${encodeURIComponent(st.slug)}&subs=${subs.map((x) => `${st.slug}.${x}`).join(",")}">See ${esc(st.name)} progression through the levels</a></p>`;
+        return `<p class="page-links"><a href="${href(area, "progression")}?strands=${encodeURIComponent(st.slug)}&subs=${subs.join(",")}&scope=selected">See ${esc(st.name)} progression through the levels</a></p>`;
       })() : ""}</div>
       <div class="picker-bar">
         <p class="picker-label" id="sub-pick">Sub-strands <span class="hint">Select one or more</span></p>
@@ -383,51 +383,67 @@
    * into rows for Understand / Know / Do / Includes and notes.
    *   layout=across (default): levels are columns; each unit is a block of rows.
    *   layout=down:             units are columns; each level is a block of rows.
-   * Params: strands=a,b  subs=<strand>.<sub>,…  levels=third,fourth  show=u,k,d,x,w  layout=down
+   * Params: strands=a,b  subs=business,cyber  scope=selected  levels=third,fourth  show=u,k,d,x,w  layout=down
+   * Strands and sub-strands are independent: a sub-strand is shown from every strand it appears in,
+   * or only from the selected strands when scope=selected.
    */
   function viewProgression(ix, params) {
     const area = state.area;
     const csv = (k) => (params.get(k) || "").split(",").filter(Boolean);
     const down = params.get("layout") === "down";
 
-    // ---- selection
+    // ---- selection: strands and sub-strands are independent filters
+    const subSlugsReq = [...new Set(csv("subs").map((id) => id.split(".").pop()))]; // old links: subs=<strand>.<sub>
+    const subSel = ix.subs.filter((s) => subSlugsReq.includes(s.slug));
     let strands = ix.doc.strands.filter((s) => csv("strands").includes(s.slug) || params.get("strand") === s.slug);
-    if (!strands.length) strands = [ix.doc.strands[0]];
+    if (!strands.length && !subSel.length) strands = [ix.doc.strands[0]];
     const strandKeys = strands.map((s) => s.slug);
-    const subIds = csv("subs").map((id) => (id.includes(".") ? id : `${strands[0].slug}.${id}`)); // old links: subs=cyber
+    const subKeys = subSel.map((s) => s.slug);
+    const onlySelected = params.get("scope") === "selected" && strands.length > 0;
+    // Each selected sub-strand from every strand it appears in (or only the selected strands)
     const subUnits = [];
-    for (const st of strands) for (const c of st.children || []) if (subIds.includes(`${st.slug}.${c.slug}`)) subUnits.push({ st, c });
-    const subKeys = subUnits.map((u) => `${u.st.slug}.${u.c.slug}`);
+    for (const sub of subSel) for (const e of sub.entries) {
+      if (onlySelected && !strands.includes(e.strand)) continue;
+      subUnits.push({ st: e.strand, c: e.node, sub });
+    }
 
-    const levelPool = LEVELS.filter((l) => strands.some((s) => s.levels.includes(l.code)));
+    const levelPool = LEVELS.filter((l) => strands.some((s) => s.levels.includes(l.code)) || subUnits.some((u) => u.c.levels.includes(l.code)));
     let levels = levelPool.filter((l) => csv("levels").includes(l.code));
     if (!levels.length) levels = levelPool;
     const levelKeys = levels.map((l) => l.code);
 
     const show = new Set(params.has("show") ? csv("show").filter((k) => SHOW_LABEL[k]) : SHOW_KEYS);
     if (!subUnits.length) show.add("w");                       // nothing to show without the strand itself
+    if (!strands.length) show.delete("w");                     // no strand selected, so no whole-strand rows
     if (![...show].some((k) => k !== "w")) ["u", "k", "d", "x"].forEach((k) => show.add(k));
     const kinds = ["u", "k", "d", "x"].filter((k) => show.has(k));
 
+    /** URL for the current selection with some settings changed (null or "" removes a setting). */
     const go = (changes) => {
-      const p = new URLSearchParams(params);
-      p.delete("strand"); p.delete("lens"); p.delete("level");
-      if (!p.has("strands")) p.set("strands", strandKeys.join(","));
-      for (const [k, v] of Object.entries(changes)) (v == null || v === "") ? p.delete(k) : p.set(k, v);
+      const current = { strands: strandKeys.join(","), subs: subKeys.join(","), scope: params.get("scope"),
+        levels: params.get("levels"), show: params.get("show"), layout: params.get("layout") };
+      const p = new URLSearchParams();
+      const next = { ...current, ...changes };
+      if (!next.strands) delete next.scope;                    // "only selected strands" needs a strand
+      for (const [k, v] of Object.entries(next)) if (v != null && v !== "") p.set(k, v);
       return href(area, "progression") + "?" + p.toString().replace(/%2C/g, ",");
     };
     const toggled = (list, item) => (list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
     const chip = (label, on, target, opts = {}) =>
       `<li><button type="button" class="chip${opts.radio ? " radio" : ""}" aria-pressed="${on}"${
-        target ? ` data-go="${target}"` : ` aria-disabled="true"${opts.why ? ` title="${esc(opts.why)}"` : ""}`}>${esc(label)}</button></li>`;
+        target ? ` data-go="${target}"` : ` aria-disabled="true"`}${opts.why || opts.title ? ` title="${esc(target ? opts.title || "" : opts.why || opts.title)}"` : ""}>${esc(label)}</button></li>`;
 
-    // ---- units
+    // ---- units: with strands selected, sub-strands sit beside their strand; otherwise grouped by sub-strand
+    const strandUnit = (st) => ({ type: "strand", st, node: st, key: st.slug, label: st.name, note: "Whole strand" });
+    const subUnit = (u) => ({ type: "sub", st: u.st, node: u.c, key: `${u.st.slug}.${u.c.slug}`, label: u.c.name, note: u.st.name });
     const units = [];
-    for (const st of strands) {
-      if (show.has("w")) units.push({ type: "strand", st, node: st, key: st.slug, label: st.name, note: "Whole strand" });
-      for (const u of subUnits.filter((u) => u.st === st)) {
-        units.push({ type: "sub", st, node: u.c, key: `${st.slug}.${u.c.slug}`, label: u.c.name, note: st.name });
+    if (strands.length) {
+      for (const st of ix.doc.strands) {
+        if (strands.includes(st) && show.has("w")) units.push(strandUnit(st));
+        for (const u of subUnits.filter((u) => u.st === st)) units.push(subUnit(u));
       }
+    } else {
+      for (const sub of subSel) for (const u of subUnits.filter((u) => u.sub === sub)) units.push(subUnit(u));
     }
 
     // ---- cell content
@@ -441,9 +457,9 @@
       ? items.map((x) => `<div class="p-extra ${x.kind}" title="${esc(x.code)}"><span>${EXTRA_LABEL[x.kind]}</span>${md(x.body)}</div>`).join("") : none();
     const understandCell = (blocks) => blocks.filter((b) => b.understanding).map((b) => `<p class="p-u">${esc(b.understanding)}</p>`).join("");
     const subTags = (st, nodes) => `<ul class="tags">${nodes.map((c) => {
-      const id = `${st.slug}.${c.slug}`, on = subKeys.includes(id);
-      return `<li><button type="button" class="tag" aria-pressed="${on}" data-go="${go({ subs: toggled(subKeys, id).join(",") || null })}"
-        title="${on ? "Remove from" : "Add to"} the comparison">${esc(c.name)}</button></li>`;
+      const on = subKeys.includes(c.slug);
+      return `<li><button type="button" class="tag" aria-pressed="${on}" data-go="${go({ subs: toggled(subKeys, c.slug).join(",") || null })}"
+        title="${on ? "Remove" : "Add"} ${esc(c.name)} ${on ? "from" : "to"} the comparison">${esc(c.name)}</button></li>`;
     }).join("")}</ul>`;
     const present = (unit, lv) => unit.node.levels.includes(lv);
     const strandHasSubsAt = (st, lv) => (st.children || []).some((c) => c.levels.includes(lv));
@@ -533,19 +549,20 @@
     const strandCtl = `<ul class="chips">${ix.doc.strands.map((st) => {
       const on = strandKeys.includes(st.slug);
       const next = ix.doc.strands.map((x) => x.slug).filter((x) => (x === st.slug ? !on : strandKeys.includes(x)));
-      const subsNext = on ? subKeys.filter((id) => !id.startsWith(st.slug + ".")) : subKeys;   // drop its sub-strands
-      return chip(st.name, on, on && strandKeys.length === 1 ? null
-        : go({ strands: next.join(","), subs: subsNext.join(",") || null, levels: null }), { why: "At least one strand stays selected" });
+      return chip(st.name, on, on && strandKeys.length === 1 && !subKeys.length ? null : go({ strands: next.join(",") || null, levels: null }),
+        { why: "Select a sub-strand before removing the last strand" });
     }).join("")}</ul>`;
-    const subCtl = strands.map((st) => {
-      const kids = st.children || [];
-      return `<div class="p-subrow"><span class="p-substrand">${esc(st.name)}</span>${kids.length
-        ? `<ul class="chips">${kids.map((c) => {
-            const id = `${st.slug}.${c.slug}`;
-            return chip(`${c.name}`, subKeys.includes(id), go({ subs: toggled(subKeys, id).join(",") || null }));
-          }).join("")}</ul>`
-        : `<span class="p-hint">Taught as one strand</span>`}</div>`;
-    }).join("");
+    const subCtl = `<ul class="chips">${ix.subs.map((s) => {
+      const on = subKeys.includes(s.slug);
+      const strandCount = new Set(s.entries.map((e) => e.strand)).size;
+      return chip(s.name, on, on && subKeys.length === 1 && !strandKeys.length ? null : go({ subs: toggled(subKeys, s.slug).join(",") || null, levels: null }),
+        { title: `In ${strandCount} strand${strandCount === 1 ? "" : "s"}`, why: "Select a strand before removing the last sub-strand" });
+    }).join("")}</ul>
+      <div class="p-scope"><span class="p-hint">Show sub-strands</span><ul class="chips">
+        ${chip("In every strand", !onlySelected, onlySelected ? go({ scope: null }) : null, { radio: true })}
+        ${chip("Only in selected strands", onlySelected, !onlySelected && strands.length ? go({ scope: "selected" }) : null,
+          { radio: true, why: strands.length ? "" : "Select a strand to limit sub-strands to it" })}
+      </ul></div>`;
     const levelCtl = `<ul class="chips">${levelPool.map((l) => {
       const on = levelKeys.includes(l.code);
       const next = levelPool.map((x) => x.code).filter((c) => (c === l.code ? !on : levelKeys.includes(c)));
@@ -555,16 +572,16 @@
     const showCtl = `<ul class="chips">${SHOW_KEYS.map((k) => {
       const on = show.has(k);
       const next = SHOW_KEYS.filter((x) => (x === k ? !on : show.has(x)));
-      const lockedW = k === "w" && !subUnits.length;
+      const lockedW = k === "w" && (!subUnits.length || !strands.length);
       const lockedLast = on && k !== "w" && kinds.length === 1;
       return chip(SHOW_LABEL[k], on, lockedW || lockedLast ? null : go({ show: next.length === SHOW_KEYS.length ? null : next.join(",") }),
-        { why: lockedW ? "Select a sub-strand to hide the whole-strand rows" : "At least one row stays visible" });
+        { why: k === "w" ? (!strands.length ? "Select a strand to show its whole-strand rows" : "Select a sub-strand to hide the whole-strand rows") : "At least one row stays visible" });
     }).join("")}</ul>`;
 
     const unitNames = units.map((u) => (u.type === "sub" ? `${u.label} (${u.note})` : u.label));
     main.innerHTML = `
       <div class="page-head"><h1>Progression</h1>
-        <p>See how strands and sub-strands develop. Choose what to compare, then show levels across the page or down it.</p></div>
+        <p>See how strands and sub-strands develop. Pick any strands, any sub-strands, or both, then show levels across the page or down it.</p></div>
       <div class="p-controls">
         ${layoutCtl}
         <div class="p-field"><span class="p-label">Strands</span>${strandCtl}</div>
@@ -572,7 +589,7 @@
         <div class="p-field"><span class="p-label">Levels</span>${levelCtl}</div>
         <div class="p-field"><span class="p-label">Show</span>${showCtl}</div>
       </div>
-      <p class="p-summary">${esc(listNames(unitNames))}, ${levelRange(levelKeys)}.</p>
+      <p class="p-summary">${unitNames.length > 4 ? `${unitNames.length} strands and sub-strands` : esc(listNames(unitNames))}, ${levelRange(levelKeys)}.</p>
       <div class="prog-wrap">${table}</div>`;
     document.title = `Progression · ${ix.doc.name} · Curriculum Explorer`;
   }

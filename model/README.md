@@ -146,11 +146,11 @@ A static site in `web/` (plain HTML, CSS and JavaScript, no build step) that rea
 
 - **Understandings:** a matrix of strands × levels. Each cell shows the Understand statement and tags for the sub-strands at that level; a tag opens that sub-strand at that level, filtered to that strand.
 - **Purpose and big ideas:** the purpose statement, the Big Ideas, and the structure at each level: a strand → sub-strand tree per level, with strands in aligned rows.
-- **Progression:** compare any mix of strands, sub-strands and levels, all multi-select. Sub-strands are chosen per strand, since a name like Business recurs across strands.
+- **Progression:** compare any mix of strands, sub-strands and levels. Strands and sub-strands are independent filters: a sub-strand is shown from every strand it appears in (e.g. Business across all five strands), or only from the selected strands if you choose "Only in selected strands".
   - *Levels across:* levels are the columns; each strand or sub-strand is a block of rows (Understand, Know, Do, Includes and notes).
   - *Levels down:* each strand or sub-strand is a column; each level is a block of rows. One level with several sub-strands gives a side-by-side comparison within that level.
 
-  A "Sub-strands" row lists what exists at each level; selecting a tag adds it, so you can follow Computing (Second) into Computing Science (Third). Rows can be hidden, including the whole-strand rows. All settings are in the URL, e.g. `#/technologies/progression?strands=systems&subs=systems.computing,systems.computing-science&show=u,d&layout=down`.
+  Rows can be hidden, including the whole-strand rows. All settings are in the URL, e.g. `#/technologies/progression?subs=business,cyber&levels=third,fourth&layout=down`.
 - **By level:** every strand at one level, with its Understanding, Know, Do, Includes, Excludes and Notes.
 - **By strand:** the Understanding at each level, then each level in full.
 - **By sub-strand:** select one or more sub-strands to see them gathered from every strand they appear in, grouped by level and filterable by strand. The selection is part of the URL (e.g. `#/technologies/substrand/business,cyber`), so it can be bookmarked.
