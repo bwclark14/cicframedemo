@@ -7,7 +7,7 @@
  *   #/<area>/level/<level>[/<strand>]
  *   #/<area>/strand/<strand>[/<level>]
  *   #/<area>/matrix
- *   #/<area>/progression?strands=a,b&subs=business,cyber&scope=selected&levels=third,fourth&show=u,k,d,x,w
+ *   #/<area>/progression?show=u|k|d|x&open=<strand>,<strand>
  *   #/<area>/substrand/<sub>[,<sub>…][/<level>][?strand=<strand>]
  */
 (function () {
@@ -229,7 +229,7 @@
     main.innerHTML = `
       <div class="page-head"><h1>${esc(strand.name)}</h1>
         <p>${levelRange(strand.levels)}. How understanding in this strand builds from level to level.</p>
-        <p class="page-links"><a href="${href(area, "progression")}?strands=${encodeURIComponent(strand.slug)}">Compare the levels side by side</a></p></div>
+        <p class="page-links"><a href="${progressionHref(area, "k", [strand.slug])}">See ${esc(strand.name)} in the progression matrix</a></p></div>
       <p class="picker-label" id="strand-pick">Strands</p>
       <ul class="picker" aria-labelledby="strand-pick">${ix.doc.strands.map((s) =>
         `<li><a href="${href(area, "strand", s.slug)}" aria-current="${s === strand}">${esc(s.name)}</a></li>`).join("")}</ul>
@@ -311,8 +311,7 @@
     main.innerHTML = `
       <div class="page-head"><h1>${esc(title)}</h1><p>${intro}</p>${strandFilter || strands.length === 1 ? (() => {
         const st = strandFilter ? strands.find((x) => x.slug === strandFilter) : strands[0];
-        const subs = selected.filter((sub) => sub.entries.some((e) => e.strand === st)).map((sub) => sub.slug);
-        return `<p class="page-links"><a href="${href(area, "progression")}?strands=${encodeURIComponent(st.slug)}&subs=${subs.join(",")}&scope=selected">See ${esc(st.name)} progression through the levels</a></p>`;
+        return `<p class="page-links"><a href="${progressionHref(area, "k", [st.slug])}">See ${esc(st.name)} in the progression matrix</a></p>`;
       })() : ""}</div>
       <div class="picker-bar">
         <p class="picker-label" id="sub-pick">Sub-strands <span class="hint">Select one or more</span></p>
@@ -372,245 +371,110 @@
     document.title = `Understanding at each level · ${ix.doc.name} · Curriculum Explorer`;
   }
 
-  // ---------------------------------------------------------------- progression
-  const KINDS = { k: ["know"], d: ["do"], x: ["includes", "excludes", "note"] };
-  const ROW_LABEL = { u: "Understand", k: "Know", d: "Do", x: "Includes and notes", s: "Sub-strands" };
-  const SHOW_KEYS = ["u", "k", "d", "x", "w"];
-  const SHOW_LABEL = { u: "Understand", k: "Know", d: "Do", x: "Includes and notes", w: "Whole strand" };
+  // ---------------------------------------------------------------- progression matrix
+  // Strands as rows (sub-strands nested underneath, expandable), levels as columns.
+  // Reading across a row shows how that strand or sub-strand progresses.
+  // Params: show=u|k|d|x (what the cells hold, default k)  open=<strand>,<strand> (expanded strands)
+  const PM_KINDS = [
+    { key: "u", label: "Understand", kinds: [] },
+    { key: "k", label: "Know", kinds: ["know"] },
+    { key: "d", label: "Do", kinds: ["do"] },
+    { key: "x", label: "Notes", kinds: ["includes", "excludes", "note"] },
+  ];
 
-  /**
-   * Progression grid. Units (selected strands and sub-strands) × levels, each intersection broken
-   * into rows for Understand / Know / Do / Includes and notes.
-   * Levels are the columns; each unit is a block of rows.
-   * Params: strands=a,b  subs=business,cyber  scope=selected  levels=third,fourth  show=u,k,d,x,w
-   * Strands and sub-strands are independent: a sub-strand is shown from every strand it appears in,
-   * or only from the selected strands when scope=selected.
-   */
+  function progressionHref(area, show, open) {
+    const p = new URLSearchParams();
+    if (show && show !== "k") p.set("show", show);
+    if (open && open.length) p.set("open", open.join(","));
+    const q = p.toString().replace(/%2C/g, ",");
+    return href(area, "progression") + (q ? "?" + q : "");
+  }
+
   function viewProgression(ix, params) {
     const area = state.area;
-    const csv = (k) => (params.get(k) || "").split(",").filter(Boolean);
+    const kind = PM_KINDS.find((k) => k.key === params.get("show")) || PM_KINDS[1];
+    const open = new Set((params.get("open") || "").split(",").filter(Boolean));
 
-    // ---- selection: strands and sub-strands are independent filters
-    const subSlugsReq = [...new Set(csv("subs").map((id) => id.split(".").pop()))]; // old links: subs=<strand>.<sub>
-    const subSel = ix.subs.filter((s) => subSlugsReq.includes(s.slug));
-    let strands = ix.doc.strands.filter((s) => csv("strands").includes(s.slug) || params.get("strand") === s.slug);
-    if (!strands.length && !subSel.length) strands = [ix.doc.strands[0]];
-    const strandKeys = strands.map((s) => s.slug);
-    const subKeys = subSel.map((s) => s.slug);
-    const onlySelected = params.get("scope") === "selected" && strands.length > 0;
-    // Each selected sub-strand from every strand it appears in (or only the selected strands)
-    const subUnits = [];
-    for (const sub of subSel) for (const e of sub.entries) {
-      if (onlySelected && !strands.includes(e.strand)) continue;
-      subUnits.push({ st: e.strand, c: e.node, sub });
-    }
-
-    const levelPool = LEVELS.filter((l) => strands.some((s) => s.levels.includes(l.code)) || subUnits.some((u) => u.c.levels.includes(l.code)));
-    let levels = levelPool.filter((l) => csv("levels").includes(l.code));
-    if (!levels.length) levels = levelPool;
-    const levelKeys = levels.map((l) => l.code);
-
-    const show = new Set(params.has("show") ? csv("show").filter((k) => SHOW_LABEL[k]) : SHOW_KEYS);
-    if (!subUnits.length) show.add("w");                       // nothing to show without the strand itself
-    if (!strands.length) show.delete("w");                     // no strand selected, so no whole-strand rows
-    if (![...show].some((k) => k !== "w")) ["u", "k", "d", "x"].forEach((k) => show.add(k));
-    const kinds = ["u", "k", "d", "x"].filter((k) => show.has(k));
-
-    /** URL for the current selection with some settings changed (null or "" removes a setting). */
-    const go = (changes) => {
-      const current = { strands: strandKeys.join(","), subs: subKeys.join(","), scope: params.get("scope"),
-        levels: params.get("levels"), show: params.get("show") };
-      const p = new URLSearchParams();
-      const next = { ...current, ...changes };
-      if (!next.strands) delete next.scope;                    // "only selected strands" needs a strand
-      for (const [k, v] of Object.entries(next)) if (v != null && v !== "") p.set(k, v);
-      return href(area, "progression") + "?" + p.toString().replace(/%2C/g, ",");
-    };
-    const toggled = (list, item) => (list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
-    const chip = (label, on, target, opts = {}) =>
-      `<li><button type="button" class="chip${opts.radio ? " radio" : ""}" aria-pressed="${on}"${
-        target ? ` data-go="${target}"` : ` aria-disabled="true"`}${opts.why || opts.title ? ` title="${esc(target ? opts.title || "" : opts.why || opts.title)}"` : ""}>${esc(label)}</button></li>`;
-
-    // ---- units: with strands selected, sub-strands sit beside their strand; otherwise grouped by sub-strand
-    const strandUnit = (st) => ({ type: "strand", st, node: st, key: st.slug, label: st.name, note: "Whole strand" });
-    const subUnit = (u) => ({ type: "sub", st: u.st, node: u.c, key: `${u.st.slug}.${u.c.slug}`, label: u.c.name, note: u.st.name });
-    const units = [];
-    if (strands.length) {
-      for (const st of ix.doc.strands) {
-        if (strands.includes(st) && show.has("w")) units.push(strandUnit(st));
-        for (const u of subUnits.filter((u) => u.st === st)) units.push(subUnit(u));
-      }
-    } else {
-      for (const sub of subSel) for (const u of subUnits.filter((u) => u.sub === sub)) units.push(subUnit(u));
-    }
-
-    // ---- cell content
     const blocksAt = (node, lv) => (node.blocks || []).filter((b) => b.level === lv);
-    const anchorsAt = (st, lv) => blocksAt(st, lv).filter((b) => b.understanding);
-    const stmts = (blocks, ks) => blocks.flatMap((b) => (b.statements || []).filter((x) => ks.includes(x.kind)));
-    const none = (text = "None") => `<span class="p-none">${esc(text)}</span>`;
-    const listCell = (items) => items.length
-      ? `<ul class="p-list">${items.map((x) => `<li title="${esc(x.code)}">${inlineMd(x.body)}</li>`).join("")}</ul>` : none();
-    const extrasCell = (items) => items.length
-      ? items.map((x) => `<div class="p-extra ${x.kind}" title="${esc(x.code)}"><span>${EXTRA_LABEL[x.kind]}</span>${md(x.body)}</div>`).join("") : none();
-    const understandCell = (blocks) => blocks.filter((b) => b.understanding).map((b) => `<p class="p-u">${esc(b.understanding)}</p>`).join("");
-    const subTags = (st, nodes) => `<ul class="tags">${nodes.map((c) => {
-      const on = subKeys.includes(c.slug);
-      return `<li><button type="button" class="tag" aria-pressed="${on}" data-go="${go({ subs: toggled(subKeys, c.slug).join(",") || null })}"
-        title="${on ? "Remove" : "Add"} ${esc(c.name)} ${on ? "from" : "to"} the comparison">${esc(c.name)}</button></li>`;
-    }).join("")}</ul>`;
-    const present = (unit, lv) => unit.node.levels.includes(lv);
+    const stmts = (blocks) => blocks.flatMap((b) => (b.statements || []).filter((x) => kind.kinds.includes(x.kind)));
+    const none = (t) => `<span class="p-none">${esc(t)}</span>`;
+    const understand = (blocks) => blocks.filter((b) => b.understanding).map((b) => `<p class="p-u">${esc(b.understanding)}</p>`).join("");
+    const list = (items) => kind.key === "x"
+      ? items.map((x) => `<div class="p-extra ${x.kind}" title="${esc(x.code)}"><span>${EXTRA_LABEL[x.kind]}</span>${md(x.body)}</div>`).join("")
+      : `<ul class="p-list">${items.map((x) => `<li title="${esc(x.code)}">${inlineMd(x.body)}</li>`).join("")}</ul>`;
     const subsAt = (st, lv) => (st.children || []).filter((c) => c.levels.includes(lv));
-    const strandHasSubsAt = (st, lv) => subsAt(st, lv).length > 0;
 
-    /** Rows for a block: the visible kinds, plus a Sub-strands row where a whole strand splits into sub-strands. */
-    const rowsFor = (unitList, lvList) => {
-      // A Know/Do/notes row is worth showing if some cell in it holds statements, or is a place where
-      // statements belong (a sub-strand, or a strand taught as one) and so "None" is real information.
-      const useful = (k) => k === "u" || unitList.some((u) => lvList.some((l) => present(u, l.code) && (
-        u.type === "sub" || !strandHasSubsAt(u.st, l.code) || stmts(anchorsAt(u.st, l.code), KINDS[k]).length ||
-        subsAt(u.st, l.code).some((c) => stmts(blocksAt(c, l.code), KINDS[k]).length))));
-      const rows = kinds.filter(useful);
-      if (unitList.some((u) => u.type === "strand" && lvList.some((l) => strandHasSubsAt(u.st, l.code)))) rows.push("s");
-      return rows.length ? rows : ["s"];
+    const strandCell = (st, l) => {
+      if (!st.levels.includes(l.code)) return { cls: "absent", html: none("Not at this level") };
+      const anchors = blocksAt(st, l.code).filter((b) => b.understanding);
+      if (kind.key === "u") return { cls: "u", html: understand(anchors) || none("None") };
+      const items = stmts(anchors);
+      const here = subsAt(st, l.code);
+      const toSubs = here.length
+        ? `<button type="button" class="pm-insubs" data-expand="${esc(st.slug)}">${items.length ? "More in" : "In"} ${here.length} sub-strand${here.length === 1 ? "" : "s"}</button>` : "";
+      if (!items.length) return { cls: here.length ? "muted" : "", html: toSubs || none("None") };
+      return { cls: "", html: list(items) + toSubs };
     };
-
-    /** HTML for one unit at one level in one row. `firstRow` gets the "not at this level" message. */
-    const cell = (u, lv, k, firstRow) => {
-      const L = LEVELS.find((l) => l.code === lv);
-      if (!present(u, lv)) {
-        const msg = u.type === "strand" ? "Not at this level" : `Not a separate sub-strand at ${L.name} Level`;
-        return { html: firstRow ? none(msg) : "", cls: "p-absent" };
+    const subCell = (st, c, l) => {
+      if (!c.levels.includes(l.code)) return { cls: "absent", html: "" };
+      const blocks = blocksAt(c, l.code);
+      if (kind.key === "u") {
+        const own = understand(blocks);
+        return own ? { cls: "u", html: own } : { cls: "muted", html: none(`Same as ${st.name}`) };
       }
-      if (u.type === "strand") {
-        const anchors = anchorsAt(u.st, lv);
-        if (k === "u") return { html: understandCell(anchors) || none(), cls: "p-ucell" };
-        if (k === "s") {
-          const here = (u.st.children || []).filter((c) => c.levels.includes(lv));
-          return { html: here.length ? subTags(u.st, here) : none("Taught as one strand"), cls: "" };
-        }
-        const items = stmts(anchors, KINDS[k]);
-        const render = (list) => (k === "x" ? extrasCell(list) : listCell(list));
-        const here = subsAt(u.st, lv);
-        if (!here.length) return { html: render(items), cls: "" };          // taught as one strand
-        // Strand split into sub-strands: whole-strand statements first, then each sub-strand, collapsible
-        const own = items.length ? `<p class="p-sublabel">Across the whole strand</p>${render(items)}` : "";
-        const parts = here.map((c) => {
-          const si = stmts(blocksAt(c, lv), KINDS[k]);
-          if (!si.length) return "";
-          return `<details class="p-sub"><summary><span class="p-subname">${esc(c.name)}</span><span class="p-count">(${si.length})</span></summary>${render(si)}</details>`;
-        }).join("");
-        return { html: own + parts || none(), cls: "" };
-      }
-      const blocks = blocksAt(u.node, lv);
-      if (k === "u") {
-        const own = understandCell(blocks);
-        if (own) return { html: own, cls: "p-ucell" };
-        return { html: `<p class="p-u shared">${esc(understandingOf(ix, blocks[0]) || "")}</p><span class="p-src">Shared with ${esc(u.st.name)}</span>`, cls: "p-ucell p-inherit" };
-      }
-      if (k === "s") return { html: "", cls: "p-absent" };
-      const items = stmts(blocks, KINDS[k]);
-      return { html: k === "x" ? extrasCell(items) : listCell(items), cls: "" };
+      const items = stmts(blocks);
+      return { cls: "", html: items.length ? list(items) : none("None") };
     };
+    const td = (l, c) => `<td class="pm-cell ${lvlClass(l.code)} ${c.cls}" data-label="${l.name} Level">${c.html}</td>`;
 
-    const td = (lvlCode, label, c) => `<td class="p-cell ${lvlClass(lvlCode)} ${c.cls}" data-label="${esc(label)}">${c.html}</td>`;
-    const rowHead = (k) => `<th scope="row" class="p-rowhead ${k}">${ROW_LABEL[k]}</th>`;
-    // ---- the grid: levels are the columns; each strand or sub-strand is a block of rows
-    const cols = levels;
-    const body = units.map((u) => {
-      const rows = rowsFor([u], cols).filter((k) => k !== "s" || u.type === "strand");
-      const head = `<tr class="p-group"><th colspan="${cols.length + 1}" scope="rowgroup">${esc(u.label)}<small>${esc(u.note)}</small></th></tr>`;
-      return `<tbody>${head}${rows.map((k, i) =>
-        `<tr>${rowHead(k)}${cols.map((l) => td(l.code, `${l.name} Level`, cell(u, l.code, k, i === 0))).join("")}</tr>`).join("")}</tbody>`;
+    const groups = ix.doc.strands.map((st) => {
+      const kids = st.children || [];
+      const isOpen = open.has(st.slug);
+      const head = kids.length
+        ? `<button type="button" class="pm-toggle" aria-expanded="${isOpen}" data-strand="${esc(st.slug)}">
+             <span class="pm-name">${esc(st.name)}</span><span class="pm-count">${kids.length} sub-strands</span></button>`
+        : `<span class="pm-plain"><span class="pm-name">${esc(st.name)}</span><span class="pm-count">Taught as one strand</span></span>`;
+      const strandRow = `<tr class="pm-strand"><th scope="row" class="pm-rowhead">${head}</th>${LEVELS.map((l) => td(l, strandCell(st, l))).join("")}</tr>`;
+      const subRows = kids.map((c) => `<tr class="pm-subrow" data-parent="${esc(st.slug)}"${isOpen ? "" : " hidden"}>
+        <th scope="row" class="pm-rowhead pm-sub"><a href="${href(area, "substrand", c.slug)}?strand=${encodeURIComponent(st.slug)}">${esc(c.name)}</a></th>
+        ${LEVELS.map((l) => td(l, subCell(st, c, l))).join("")}</tr>`).join("");
+      return `<tbody class="pm-group" data-strand="${esc(st.slug)}">${strandRow}${subRows}</tbody>`;
     }).join("");
-    const table = `<table class="prog" style="--cols:${cols.length}">
-      <caption class="visually-hidden">Progression by level</caption>
-      <thead><tr><td class="p-corner"></td>${cols.map((l) => `<th scope="col" class="p-head ${lvlClass(l.code)}">${l.name} Level</th>`).join("")}</tr></thead>
-      ${body}</table>`;
-
-    // ---- controls
-    const allStrandKeys = ix.doc.strands.map((x) => x.slug);
-    const allSubKeys = ix.subs.map((x) => x.slug);
-    /** "Select all" for a filter, inactive when everything is already selected. */
-    const selectAll = (done, target) => `<button type="button" class="link-btn" ${done
-      ? 'aria-disabled="true" disabled' : `data-go="${target}"`}>Select all</button>`;
-    const field = (label, all, body) =>
-      `<div class="p-field"><div class="p-labelcol"><span class="p-label">${label}</span>${all}</div><div>${body}</div></div>`;
-
-    const strandCtl = `<ul class="chips">${ix.doc.strands.map((st) => {
-      const on = strandKeys.includes(st.slug);
-      const next = allStrandKeys.filter((x) => (x === st.slug ? !on : strandKeys.includes(x)));
-      return chip(st.name, on, on && strandKeys.length === 1 && !subKeys.length ? null : go({ strands: next.join(",") || null, levels: null }),
-        { why: "Select a sub-strand before removing the last strand" });
-    }).join("")}</ul>`;
-    const subCtl = `<ul class="chips">${ix.subs.map((s) => {
-      const on = subKeys.includes(s.slug);
-      const strandCount = new Set(s.entries.map((e) => e.strand)).size;
-      return chip(s.name, on, on && subKeys.length === 1 && !strandKeys.length ? null : go({ subs: toggled(subKeys, s.slug).join(",") || null, levels: null }),
-        { title: `In ${strandCount} strand${strandCount === 1 ? "" : "s"}`, why: "Select a strand before removing the last sub-strand" });
-    }).join("")}</ul>
-      <div class="p-scope"><span class="p-hint">Show sub-strands</span><ul class="chips">
-        ${chip("In every strand", !onlySelected, onlySelected ? go({ scope: null }) : null, { radio: true })}
-        ${chip("Only in selected strands", onlySelected, !onlySelected && strands.length ? go({ scope: "selected" }) : null,
-          { radio: true, why: strands.length ? "" : "Select a strand to limit sub-strands to it" })}
-      </ul></div>`;
-    const levelCtl = `<ul class="chips">${levelPool.map((l) => {
-      const on = levelKeys.includes(l.code);
-      const next = levelPool.map((x) => x.code).filter((c) => (c === l.code ? !on : levelKeys.includes(c)));
-      return chip(l.name, on, on && levelKeys.length === 1 ? null : go({ levels: next.length === levelPool.length ? null : next.join(",") }),
-        { why: "At least one level stays selected" });
-    }).join("")}</ul>`;
-    const showCtl = `<ul class="chips">${SHOW_KEYS.map((k) => {
-      const on = show.has(k);
-      const next = SHOW_KEYS.filter((x) => (x === k ? !on : show.has(x)));
-      const lockedW = k === "w" && (!subUnits.length || !strands.length);
-      const lockedLast = on && k !== "w" && kinds.length === 1;
-      return chip(SHOW_LABEL[k], on, lockedW || lockedLast ? null : go({ show: next.length === SHOW_KEYS.length ? null : next.join(",") }),
-        { why: k === "w" ? (!strands.length ? "Select a strand to show its whole-strand rows" : "Select a sub-strand to hide the whole-strand rows") : "At least one row stays visible" });
-    }).join("")}</ul>`;
-    const allShown = ["u", "k", "d", "x"].every((k) => show.has(k)) && (show.has("w") || !strands.length || !subUnits.length);
-
-    // ---- summary of the current filters (always visible, also when the panel is collapsed)
-    const some = (names, total, noun) => names.length === total ? `All ${noun}`
-      : names.length > 3 ? `${names.length} of ${total} ${noun}` : listNames(names);
-    const levelText = (() => {
-      const idx = levelKeys.map((c) => LEVELS.findIndex((l) => l.code === c)).sort((x, y) => x - y);
-      const names = idx.map((i) => LEVELS[i].name);
-      const contiguous = idx.every((v, i) => i === 0 || v === idx[i - 1] + 1);
-      return names.length === 1 ? names[0] : contiguous ? `${names[0]} to ${names[names.length - 1]}` : listNames(names);
-    })();
-    const rowsText = ["u", "k", "d", "x"].every((k) => show.has(k)) ? "All rows" : listNames(kinds.map((k) => ROW_LABEL[k]));
-    const summaryItems = [
-      ["Strands", strands.length ? some(strands.map((x) => x.name), ix.doc.strands.length, "strands") : "None"],
-      ["Sub-strands", subSel.length ? some(subSel.map((x) => x.name), ix.subs.length, "sub-strands") + (onlySelected ? ", only in selected strands" : "") : "None"],
-      ["Levels", levelText],
-      ["Showing", rowsText + (strands.length && subUnits.length && !show.has("w") ? ", without whole-strand rows" : "")],
-    ];
-    let collapsed = false;
-    try { collapsed = localStorage.getItem("cic.progression.filtersCollapsed") === "1"; } catch (e) { /* storage unavailable */ }
 
     main.innerHTML = `
       <div class="page-head"><h1>Progression</h1>
-        <p>See how strands and sub-strands develop through the levels. Pick any strands, any sub-strands, or both.</p></div>
-      <section class="p-filters${collapsed ? " is-collapsed" : ""}" aria-labelledby="p-filters-title">
-        <div class="p-filterbar">
-          <h2 class="p-ftitle" id="p-filters-title">Filters</h2>
-          <ul class="p-fsummary">${summaryItems.map(([k, v]) => `<li><span>${k}</span> ${esc(v)}</li>`).join("")}</ul>
-          <button type="button" class="p-ftoggle" aria-expanded="${!collapsed}" aria-controls="p-controls">${collapsed ? "Show filters" : "Hide filters"}</button>
-        </div>
-        <div class="p-controls" id="p-controls"${collapsed ? " hidden" : ""}>
-          ${field("Strands", selectAll(strandKeys.length === allStrandKeys.length, go({ strands: allStrandKeys.join(","), levels: null })), strandCtl)}
-          ${field("Sub-strands", selectAll(subKeys.length === allSubKeys.length, go({ subs: allSubKeys.join(","), levels: null })), `<div class="p-subs">${subCtl}</div>`)}
-          ${field("Levels", selectAll(levelKeys.length === levelPool.length, go({ levels: null })), levelCtl)}
-          ${field("Show", selectAll(allShown, go({ show: null })), showCtl)}
-        </div>
-      </section>
-      ${table.includes('class="p-sub"') ? `<div class="p-tools">
-        <button type="button" class="link-btn" data-details="open">Expand all sub-strands</button>
-        <button type="button" class="link-btn" data-details="close">Collapse all</button></div>` : ""}
-      <div class="prog-wrap">${table}</div>`;
+        <p>Read across a row to see how each strand develops from Early to Fourth Level. Expand a strand to see its sub-strands.</p></div>
+      <div class="pm-tools">
+        <span class="pm-label" id="pm-show">Cells show</span>
+        <div class="chips" role="group" aria-labelledby="pm-show">${PM_KINDS.map((k) =>
+          `<button type="button" class="chip radio" aria-pressed="${k === kind}"${k === kind ? ' aria-disabled="true"'
+            : ` data-show="${k.key}"`}>${k.label}</button>`).join("")}</div>
+        <span class="pm-spacer"></span>
+        <button type="button" class="link-btn" data-pm-all="open">Expand all strands</button>
+        <button type="button" class="link-btn" data-pm-all="close">Collapse all</button>
+      </div>
+      <div class="pm-wrap">
+        <table class="pm">
+          <caption class="visually-hidden">${esc(ix.doc.name)}: ${kind.label} statements by strand and level</caption>
+          <thead><tr><th scope="col" class="pm-corner">Strand</th>${LEVELS.map((l) =>
+            `<th scope="col" class="pm-head ${lvlClass(l.code)}"><a href="${href(area, "level", l.code)}">${l.name} Level</a></th>`).join("")}</tr></thead>
+          ${groups}
+        </table>
+      </div>`;
     document.title = `Progression · ${ix.doc.name} · Curriculum Explorer`;
   }
+
+  /** Expand or collapse strands in the progression matrix without re-rendering, and keep the URL in step. */
+  function setStrandsOpen(slugs, isOpen) {
+    for (const slug of slugs) {
+      main.querySelectorAll(`.pm-subrow[data-parent="${CSS.escape(slug)}"]`).forEach((tr) => { tr.hidden = !isOpen; });
+      const btn = main.querySelector(`.pm-toggle[data-strand="${CSS.escape(slug)}"]`);
+      if (btn) btn.setAttribute("aria-expanded", String(isOpen));
+    }
+    const r = parseHash();
+    history.replaceState(null, "", progressionHref(r.area, r.params.get("show"), openStrands()));
+  }
+  const openStrands = () => [...main.querySelectorAll('.pm-toggle[aria-expanded="true"]')].map((b) => b.dataset.strand);
 
   function scrollToId(id) {
     const el = document.getElementById(id);
@@ -666,18 +530,16 @@
 
   // Buttons that navigate (stair, filters)
   main.addEventListener("click", (e) => {
-    const f = e.target.closest("button.p-ftoggle");
-    if (f) {
-      const panel = f.closest(".p-filters"), controls = panel.querySelector(".p-controls");
-      const collapse = f.getAttribute("aria-expanded") === "true";
-      controls.hidden = collapse;
-      panel.classList.toggle("is-collapsed", collapse);
-      f.setAttribute("aria-expanded", String(!collapse));
-      f.textContent = collapse ? "Show filters" : "Hide filters";
-      try { localStorage.setItem("cic.progression.filtersCollapsed", collapse ? "1" : "0"); } catch (err) { /* storage unavailable */ }
-    }
-    const t = e.target.closest("button[data-details]");
-    if (t) main.querySelectorAll("details.p-sub").forEach((d) => { d.open = t.dataset.details === "open"; });
+    const toggle = e.target.closest("button.pm-toggle");
+    if (toggle) setStrandsOpen([toggle.dataset.strand], toggle.getAttribute("aria-expanded") !== "true");
+    const expand = e.target.closest("button[data-expand]");
+    if (expand) setStrandsOpen([expand.dataset.expand], true);
+    const all = e.target.closest("button[data-pm-all]");
+    if (all) setStrandsOpen([...main.querySelectorAll(".pm-toggle")].map((b) => b.dataset.strand), all.dataset.pmAll === "open");
+    // What the progression cells show: keep whichever strands are expanded right now
+    const show = e.target.closest("button[data-show]");
+    if (show) location.hash = progressionHref(parseHash().area, show.dataset.show, openStrands());
+    // Buttons that navigate (stair, filters)
     const b = e.target.closest("button[data-go]");
     if (b && b.dataset.go.startsWith("#")) location.hash = b.dataset.go;
   });
