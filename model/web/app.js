@@ -8,7 +8,9 @@
  *   #/<area>/strand/<strand>[/<level>]
  *   #/<area>/matrix
  *   #/<area>/progression?show=u|k|d|x&open=<strand>,<strand>
- *   #/<area>/substrand/<sub>[,<sub>…][/<level>][?strand=<strand>]
+ *   #/<area>/substrand/<sub>[,<sub>…][/<level>][?strand=<strand>,…&whole=1&show=k|d&view=condensed]
+ *   #/<area>/planner            plans dashboard (plans are stored in this browser)
+ *   #/<area>/planner/<plan-id>  edit one plan
  */
 (function () {
   "use strict";
@@ -76,10 +78,14 @@
   // ---------------------------------------------------------------- index
   function indexArea(doc) {
     const blocks = new Map();       // code -> {block, node, strand}
+    const statements = new Map();   // statement code -> {s, block, node, strand, depth} (framework order)
     const nodes = [];               // flattened {node, strand, parent, depth}
     const visit = (node, strand, parent, depth) => {
       nodes.push({ node, strand, parent, depth });
-      for (const b of node.blocks || []) blocks.set(b.code, { block: b, node, strand });
+      for (const b of node.blocks || []) {
+        blocks.set(b.code, { block: b, node, strand });
+        for (const s of b.statements || []) statements.set(s.code, { s, block: b, node, strand, depth });
+      }
       for (const c of node.children || []) visit(c, strand, node, depth + 1);
     };
     for (const s of doc.strands) visit(s, s, null, 0);
@@ -91,7 +97,7 @@
       if (!subs.has(n.node.slug)) subs.set(n.node.slug, { slug: n.node.slug, name: n.node.name, entries: [] });
       subs.get(n.node.slug).entries.push(n);
     }
-    return { doc, blocks, nodes, subs: [...subs.values()] };
+    return { doc, blocks, statements, nodes, subs: [...subs.values()] };
   }
 
   const strandBySlug = (ix, slug) => ix.doc.strands.find((s) => s.slug === slug);
@@ -686,6 +692,325 @@
   }
   const openStrands = () => [...main.querySelectorAll('.pm-toggle[aria-expanded="true"]')].map((b) => b.dataset.strand);
 
+  // ---------------------------------------------------------------- planner
+  // Plans are kept in this browser (localStorage). Export / Import move them between devices or people.
+  const PLANS_KEY = "cic-plans-v1";
+  const YEAR_GROUPS = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "S1", "S2", "S3"];
+  // the CfE level a year group usually works at (a suggestion only; learners progress at their own pace)
+  const YEAR_LEVEL = { P1: "early", P2: "first", P3: "first", P4: "first", P5: "second", P6: "second", P7: "second",
+    S1: "third", S2: "third", S3: "third" };
+  const planUI = { id: null, level: null, strands: [], subs: [] };   // picker filters for the open plan
+  let planSaveTimer = null;
+
+  function loadPlans() {
+    try { const v = JSON.parse(localStorage.getItem(PLANS_KEY) || "[]"); return Array.isArray(v) ? v : []; }
+    catch { return []; }
+  }
+  function storePlans(plans) {
+    try { localStorage.setItem(PLANS_KEY, JSON.stringify(plans)); return true; } catch { return false; }
+  }
+  const getPlan = (id) => loadPlans().find((p) => p.id === id);
+  function putPlan(plan) {
+    const plans = loadPlans();
+    plan.updated = new Date().toISOString();
+    const i = plans.findIndex((p) => p.id === plan.id);
+    if (i >= 0) plans[i] = plan; else plans.push(plan);
+    return storePlans(plans);
+  }
+  const newPlanId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const fmtDate = (iso) => { try { return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }); } catch { return ""; } };
+
+  /** What a plan covers, worked out from its statement codes. */
+  function planCoverage(ix, plan) {
+    const strands = new Map(), levels = new Set();
+    let know = 0, doo = 0, missing = 0;
+    for (const code of plan.statements || []) {
+      const hit = ix.statements.get(code);
+      if (!hit) { missing++; continue; }
+      levels.add(hit.block.level);
+      if (hit.s.kind === "know") know++; else if (hit.s.kind === "do") doo++;
+      if (!strands.has(hit.strand)) strands.set(hit.strand, new Set());
+      strands.get(hit.strand).add(hit.depth > 0 ? hit.node.name : "Whole strand");
+    }
+    const ordered = ix.doc.strands.filter((s) => strands.has(s)).map((s) => ({ strand: s, subs: [...strands.get(s)] }));
+    return { strands: ordered, levels: LEVELS.filter((l) => levels.has(l.code)).map((l) => l.code), know, do: doo, missing };
+  }
+
+  function viewPlanner(ix) {
+    const area = state.area;
+    const plans = loadPlans().filter((p) => p.area === area).sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
+    const rows = plans.map((p) => {
+      const cov = planCoverage(ix, p);
+      const other = cov.levels.filter((l) => l !== p.level);
+      return `<tr>
+        <td><a class="plan-name" href="${href(area, "planner", p.id)}">${esc(p.name || "Untitled plan")}</a>
+          ${p.description ? `<p class="plan-desc">${esc(p.description.length > 140 ? p.description.slice(0, 140) + "…" : p.description)}</p>` : ""}</td>
+        <td>${esc(p.yearGroup || "")}</td>
+        <td><span class="lvl-pill ${lvlClass(p.level)}">${LEVEL_NAME[p.level] || ""}</span>${other.length
+          ? `<small class="plan-also">also ${other.map((l) => LEVEL_NAME[l]).join(", ")}</small>` : ""}</td>
+        <td>${cov.strands.length ? cov.strands.map((c) => `<div class="cov"><span class="cov-strand">${esc(c.strand.name)}</span>
+          <span class="cov-subs">${c.subs.map((x) => `<span class="cov-sub">${esc(x)}</span>`).join("")}</span></div>`).join("")
+          : `<span class="none">Nothing selected yet</span>`}</td>
+        <td class="num">${cov.know}</td><td class="num">${cov.do}</td>
+        <td>${fmtDate(p.updated)}</td>
+        <td class="plan-actions"><a href="${href(area, "planner", p.id)}">Edit</a>
+          <button type="button" class="link-btn" data-plan-dup="${esc(p.id)}">Duplicate</button>
+          <button type="button" class="link-btn danger" data-plan-del="${esc(p.id)}">Delete</button></td>
+      </tr>`;
+    }).join("");
+    main.innerHTML = `
+      <div class="page-head"><h1>Planner</h1>
+        <p>Plan a topic, unit or project and choose the Know and Do statements it covers. Plans are saved in this browser; use Export to keep a copy or move them to another device.</p></div>
+      <div class="plan-toolbar">
+        <button type="button" class="btn primary" data-plan-new>New plan</button>
+        <button type="button" class="btn" data-plan-export ${plans.length ? "" : "disabled"}>Export plans</button>
+        <label class="btn">Import plans<input type="file" accept="application/json,.json" data-plan-import hidden></label>
+        <span class="plan-status" role="status"></span>
+      </div>
+      ${plans.length ? `<div class="plan-table-wrap"><table class="plan-table">
+        <thead><tr><th scope="col">Plan</th><th scope="col">Year group</th><th scope="col">Level</th>
+          <th scope="col">Strands and sub-strands covered</th><th scope="col" class="num">Know</th><th scope="col" class="num">Do</th>
+          <th scope="col">Updated</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+        <tbody>${rows}</tbody></table></div>`
+        : `<div class="plan-empty"><p>No plans yet for ${esc(ix.doc.name)}.</p><p>Select <strong>New plan</strong> to start one.</p></div>`}`;
+    document.title = `Planner · ${ix.doc.name} · Curriculum Explorer`;
+  }
+
+  function planPickerHtml(ix, plan) {
+    const level = plan.level;
+    const strands = ix.doc.strands.filter((s) => s.levels.includes(level));
+    const subOptions = [{ value: "_whole", label: "Whole strand" }, ...ix.subs
+      .filter((s) => s.entries.some((e) => e.node.levels.includes(level)))
+      .map((s) => ({ value: s.slug, label: s.name }))];
+    const inPlay = planUI.strands.length ? strands.filter((s) => planUI.strands.includes(s.slug)) : strands;
+    const chosen = new Set(plan.statements || []);
+    const cols = inPlay.map((s) => ({ strand: s, ...strandColumn(ix, s, level, planUI.subs) }))
+      .filter((c) => c.groups.some((g) => g.sts.some((x) => x.kind === "know" || x.kind === "do")));
+    const labels = new Set(cols.flatMap((c) => c.groups.filter((g) => g.sts.length).map((g) => g.label)));
+    const showTags = labels.size > 1;
+    const list = (g, k) => {
+      const sts = g.sts.filter((x) => x.kind === k);
+      return sts.length ? `<ul class="pick-list">${sts.map((x) => `<li><label class="pick">
+        <input type="checkbox" data-pick="${esc(x.code)}" ${chosen.has(x.code) ? "checked" : ""}><span>${inlineMd(x.body)}</span></label></li>`).join("")}</ul>` : "";
+    };
+    const cell = (c, k) => c.groups.map((g) => { const l = list(g, k); return l ? (showTags ? `<p class="ss-tag ${g.origin}">${esc(g.label)}</p>` : "") + l : ""; }).join("")
+      || `<p class="none">None at this level.</p>`;
+    const chips = (label, all, options, sel, key) => `<div class="filter multi-filter" role="group" aria-label="${esc(label)}"><span>${esc(label)}</span>
+      <button type="button" aria-pressed="${!sel.length}" data-pf="${key}" data-pf-value="">${esc(all)}</button>
+      ${options.map((o) => `<button type="button" class="chip" aria-pressed="${sel.includes(o.value)}" data-pf="${key}" data-pf-value="${esc(o.value)}">${esc(o.label)}</button>`).join("")}</div>`;
+    return `
+      ${strands.length > 1 ? chips("Strands", "All strands", strands.map((s) => ({ value: s.slug, label: s.name })), planUI.strands, "strands") : ""}
+      ${subOptions.length > 1 ? chips("Sub-strands", "All", subOptions, planUI.subs, "subs") : ""}
+      ${cols.length ? `<div class="ss-wrap" tabindex="0" role="region" aria-label="Statements at ${LEVEL_NAME[level]} Level">
+        <table class="ss-table plan-pick ${lvlClass(level)}" style="--cols:${cols.length}">
+          <thead><tr><td class="corner"></td>${cols.map((c) => `<th scope="col">${esc(c.strand.name)}</th>`).join("")}</tr></thead>
+          <tbody>
+            <tr class="r-u"><th scope="row">Understand</th>${cols.map((c) => `<td>${c.und.map((u) => `<p class="ss-u">${esc(u.text)}</p>`).join("") || `<p class="none">—</p>`}</td>`).join("")}</tr>
+            <tr class="r-k"><th scope="row">Know</th>${cols.map((c) => `<td>${cell(c, "know")}</td>`).join("")}</tr>
+            <tr class="r-d"><th scope="row">Do</th>${cols.map((c) => `<td>${cell(c, "do")}</td>`).join("")}</tr>
+          </tbody></table></div>` : `<p class="empty">Nothing matches these filters at ${LEVEL_NAME[level]} Level.</p>`}`;
+  }
+
+  function planSummaryHtml(ix, plan) {
+    const picked = (plan.statements || []).map((c) => ix.statements.get(c)).filter(Boolean);
+    if (!picked.length) return `<p class="none">No statements yet. Tick Know and Do statements in the table below to add them.</p>`;
+    const byStrand = new Map();
+    for (const h of picked) {
+      const sub = h.depth > 0 ? h.node.name : "Whole strand";
+      if (!byStrand.has(h.strand)) byStrand.set(h.strand, new Map());
+      const m = byStrand.get(h.strand);
+      if (!m.has(sub)) m.set(sub, []);
+      m.get(sub).push(h);
+    }
+    return ix.doc.strands.filter((s) => byStrand.has(s)).map((s) => `<div class="sum-strand"><h3>${esc(s.name)}</h3>${
+      [...byStrand.get(s)].map(([sub, hs]) => `<div class="sum-sub"><p class="ss-tag ${sub === "Whole strand" ? "whole" : "sub"}">${esc(sub)}</p>${
+        ["know", "do"].map((k) => { const xs = hs.filter((h) => h.s.kind === k); return xs.length ? `<p class="kd-h ${k}">${k === "know" ? "Know" : "Do"}</p><ul class="sum-list">${xs.map((h) =>
+          `<li><span>${inlineMd(h.s.body)}${h.block.level !== plan.level ? ` <small class="plan-also">(${LEVEL_NAME[h.block.level]} Level)</small>` : ""}</span>
+            <button type="button" class="link-btn" data-unpick="${esc(h.s.code)}" aria-label="Remove from plan">Remove</button></li>`).join("")}</ul>` : ""; }).join("")}</div>`).join("")}</div>`).join("");
+  }
+
+  function viewPlan(ix, id) {
+    const area = state.area;
+    const plan = getPlan(id);
+    if (!plan) {
+      main.innerHTML = `<div class="page-head"><h1>Plan not found</h1><p>It may have been deleted, or it was saved in a different browser.</p>
+        <p class="page-links"><a href="${href(area, "planner")}">Back to all plans</a></p></div>`;
+      return;
+    }
+    if (planUI.id !== plan.id || planUI.level !== plan.level) Object.assign(planUI, { id: plan.id, level: plan.level, strands: [], subs: [] });
+    const cov = planCoverage(ix, plan);
+    const suggested = YEAR_LEVEL[plan.yearGroup];
+    main.innerHTML = `
+      <p class="crumb plan-crumb"><a href="${href(area, "planner")}">← All plans</a></p>
+      <div class="plan-head">
+        <div class="plan-fields">
+          <label class="fld fld-name"><span>Topic, unit or project</span>
+            <input type="text" data-plan-field="name" value="${esc(plan.name || "")}" placeholder="e.g. Designing a smart garden" autocomplete="off"></label>
+          <label class="fld"><span>Year group</span>
+            <select data-plan-field="yearGroup">${YEAR_GROUPS.map((y) => `<option${y === plan.yearGroup ? " selected" : ""}>${y}</option>`).join("")}</select></label>
+          <label class="fld"><span>Level</span>
+            <select data-plan-field="level">${LEVELS.map((l) => `<option value="${l.code}"${l.code === plan.level ? " selected" : ""}>${l.name} Level</option>`).join("")}</select>
+            ${suggested && suggested !== plan.level ? `<small class="fld-hint">${esc(plan.yearGroup)} usually works at ${LEVEL_NAME[suggested]} Level</small>` : ""}</label>
+          <label class="fld fld-desc"><span>What is planned</span>
+            <textarea data-plan-field="description" rows="4" placeholder="Describe the learning, activities and outcomes">${esc(plan.description || "")}</textarea></label>
+        </div>
+        <div class="plan-side">
+          <p class="plan-status" role="status">Saved</p>
+          <p class="plan-count"><strong data-count="know">${cov.know}</strong> Know · <strong data-count="do">${cov.do}</strong> Do</p>
+          <div class="plan-side-actions">
+            <button type="button" class="btn" data-plan-print>Print</button>
+            <button type="button" class="btn danger" data-plan-del="${esc(plan.id)}">Delete plan</button>
+          </div>
+        </div>
+      </div>
+      <section class="plan-summary"><h2 class="block-title">In this plan</h2><div data-plan-summary>${planSummaryHtml(ix, plan)}</div></section>
+      <section class="plan-picker level-section ${lvlClass(plan.level)}">
+        <h2 class="section-title">${levelMark(plan.level)}Choose statements: ${LEVEL_NAME[plan.level]} Level</h2>
+        <p class="section-sub">Tick the Know and Do statements this plan covers. Changes are saved as you go.</p>
+        <div data-plan-picker>${planPickerHtml(ix, plan)}</div>
+      </section>`;
+    document.title = `${plan.name || "Untitled plan"} · Planner · Curriculum Explorer`;
+  }
+
+  // Planner events (delegated; the planner views are re-rendered into main)
+  function planStatus(text) { const el = main.querySelector(".plan-status"); if (el) el.textContent = text; }
+  function savePlanAndReport(plan) { planStatus(putPlan(plan) ? `Saved ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Not saved: this browser is blocking storage"); }
+  function refreshPlanParts(ix, plan) {
+    const cov = planCoverage(ix, plan);
+    main.querySelector('[data-count="know"]').textContent = cov.know;
+    main.querySelector('[data-count="do"]').textContent = cov.do;
+    main.querySelector("[data-plan-summary]").innerHTML = planSummaryHtml(ix, plan);
+  }
+  async function plannerClick(e) {
+    const r = parseHash(); const area = state.area; const ix = state.areas[area];
+    if (!ix || r.view !== "planner") return false;
+    const t = e.target;
+    if (t.closest("[data-plan-new]")) {
+      const yearGroup = "P5";
+      const plan = { id: newPlanId(), area, name: "", yearGroup, level: YEAR_LEVEL[yearGroup], description: "", statements: [],
+        created: new Date().toISOString() };
+      putPlan(plan);
+      location.hash = href(area, "planner", plan.id);
+      return true;
+    }
+    const del = t.closest("[data-plan-del]");
+    if (del) {
+      const p = getPlan(del.dataset.planDel);
+      if (p && confirm(`Delete “${p.name || "Untitled plan"}”? This cannot be undone.`)) {
+        storePlans(loadPlans().filter((x) => x.id !== p.id));
+        if (r.a) location.hash = href(area, "planner"); else viewPlanner(ix);
+      }
+      return true;
+    }
+    const dup = t.closest("[data-plan-dup]");
+    if (dup) {
+      const p = getPlan(dup.dataset.planDup);
+      if (p) { putPlan({ ...p, id: newPlanId(), name: `${p.name || "Untitled plan"} (copy)`, created: new Date().toISOString() }); viewPlanner(ix); }
+      return true;
+    }
+    if (t.closest("[data-plan-export]")) {
+      const blob = new Blob([JSON.stringify({ format: "cic-plans", version: 1, plans: loadPlans() }, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = `curriculum-plans-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      return true;
+    }
+    if (t.closest("[data-plan-print]")) { window.print(); return true; }
+    const pf = t.closest("[data-pf]");
+    if (pf && r.a) {
+      const key = pf.dataset.pf, v = pf.dataset.pfValue;
+      planUI[key] = !v ? [] : planUI[key].includes(v) ? planUI[key].filter((x) => x !== v) : [...planUI[key], v];
+      const plan = getPlan(r.a);
+      if (plan) main.querySelector("[data-plan-picker]").innerHTML = planPickerHtml(ix, plan);
+      return true;
+    }
+    const un = t.closest("[data-unpick]");
+    if (un && r.a) {
+      const plan = getPlan(r.a);
+      if (!plan) return true;
+      plan.statements = plan.statements.filter((c) => c !== un.dataset.unpick);
+      savePlanAndReport(plan);
+      const box = main.querySelector(`input[data-pick="${CSS.escape(un.dataset.unpick)}"]`);
+      if (box) box.checked = false;
+      refreshPlanParts(ix, plan);
+      return true;
+    }
+    return false;
+  }
+  function plannerChange(e) {
+    const r = parseHash(); const ix = state.areas[state.area];
+    if (!ix || r.view !== "planner") return;
+    const t = e.target;
+    if (t.matches("[data-plan-import]")) {
+      const file = t.files && t.files[0];
+      if (!file) return;
+      file.text().then((txt) => {
+        let incoming;
+        try { const d = JSON.parse(txt); incoming = Array.isArray(d) ? d : d.plans; } catch { incoming = null; }
+        if (!Array.isArray(incoming)) { planStatus("That file is not a plans export."); return; }
+        const ok = incoming.filter((p) => p && typeof p.id === "string" && Array.isArray(p.statements)).map((p) => ({
+          id: p.id, area: String(p.area || state.area), name: String(p.name || ""), yearGroup: YEAR_GROUPS.includes(p.yearGroup) ? p.yearGroup : "P1",
+          level: LEVEL_NAME[p.level] ? p.level : "early", description: String(p.description || ""),
+          statements: p.statements.filter((c) => typeof c === "string"), created: p.created || new Date().toISOString(), updated: p.updated || new Date().toISOString() }));
+        const plans = loadPlans();
+        for (const p of ok) { const i = plans.findIndex((x) => x.id === p.id); if (i >= 0) plans[i] = p; else plans.push(p); }
+        storePlans(plans);
+        viewPlanner(ix);
+        planStatus(`Imported ${ok.length} plan${ok.length === 1 ? "" : "s"}.`);
+      });
+      return;
+    }
+    if (!r.a) return;
+    const plan = getPlan(r.a);
+    if (!plan) return;
+    if (t.matches("[data-pick]")) {
+      const set = new Set(plan.statements);
+      if (t.checked) set.add(t.dataset.pick); else set.delete(t.dataset.pick);
+      // keep the order the statements appear in the framework
+      plan.statements = [...ix.statements.keys()].filter((c) => set.has(c)).concat([...set].filter((c) => !ix.statements.has(c)));
+      savePlanAndReport(plan);
+      refreshPlanParts(ix, plan);
+      return;
+    }
+    const field = t.dataset.planField;
+    if (field === "yearGroup" || field === "level") {
+      if (planPending) flushPlanText();          // keep typed text before the page is redrawn
+      Object.assign(plan, getPlan(plan.id));
+      plan[field] = t.value;
+      // a new year group moves the level to its usual one while nothing has been chosen yet
+      if (field === "yearGroup" && !plan.statements.length && YEAR_LEVEL[t.value]) plan.level = YEAR_LEVEL[t.value];
+      savePlanAndReport(plan);
+      const y = window.scrollY;
+      viewPlan(ix, plan.id);
+      planStatus(`Saved ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+      window.scrollTo(0, y);
+    }
+  }
+  // Save every text field of the open plan together, so a quick switch between fields never drops an edit
+  let planPending = null;
+  function flushPlanText() {
+    clearTimeout(planSaveTimer); planSaveTimer = null;
+    const id = planPending; planPending = null;
+    const plan = id && getPlan(id);
+    if (!plan) return;
+    for (const el of main.querySelectorAll('[data-plan-field="name"], [data-plan-field="description"]')) plan[el.dataset.planField] = el.value;
+    savePlanAndReport(plan);
+  }
+  function plannerInput(e) {
+    const r = parseHash();
+    const t = e.target;
+    if (r.view !== "planner" || !r.a || !["name", "description"].includes(t.dataset.planField)) return;
+    planStatus("Saving…");
+    clearTimeout(planSaveTimer);
+    planPending = r.a;
+    planSaveTimer = setTimeout(flushPlanText, 400);
+  }
+  // leaving the plan (any navigation) saves pending text first, while its fields are still on the page
+  window.addEventListener("hashchange", () => { if (planPending) flushPlanText(); });
+  window.addEventListener("pagehide", () => { if (planPending) flushPlanText(); });
+  main.addEventListener("change", plannerChange);
+  main.addEventListener("input", plannerInput);
+
   function scrollToId(id) {
     const el = document.getElementById(id);
     if (el) requestAnimationFrame(() => el.scrollIntoView({ block: "start" }));
@@ -730,12 +1055,13 @@
       if (v === r.view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
 
-    document.body.classList.toggle("wide", ["progression", "matrix", "substrand", "level", "strand"].includes(r.view));
+    document.body.classList.toggle("wide", ["progression", "matrix", "substrand", "level", "strand", "planner"].includes(r.view));
     if (!r.b) window.scrollTo(0, 0);   // a 4th segment (strand or level) scrolls to that section instead
     if (r.view === "level") viewLevel(ix, r.a || LEVELS[0].code, r.b, r.params);
     else if (r.view === "strand") viewStrand(ix, r.a, r.b, r.params);
     else if (r.view === "substrand") viewSubstrand(ix, r.a, r.b, r.params.get("strand"), r.params.get("whole") === "1", r.params);
     else if (r.view === "matrix") viewMatrix(ix);
+    else if (r.view === "planner") { if (r.a) viewPlan(ix, r.a); else viewPlanner(ix); }
     else if (r.view === "progression") viewProgression(ix, r.params);
     else viewOverview(ix);
   }
@@ -766,6 +1092,10 @@
   main.addEventListener("focusin", linkSubs);
 
   main.addEventListener("click", (e) => {
+    if (parseHash().view === "planner" && e.target.closest("[data-plan-new], [data-plan-del], [data-plan-dup], [data-plan-export], [data-plan-print], [data-pf], [data-unpick]")) {
+      plannerClick(e);
+      return;
+    }
     // Know/Do layout for one table: redraw just that table and remember the choice
     const lay = e.target.closest("button[data-kd-layout]");
     if (lay) {
