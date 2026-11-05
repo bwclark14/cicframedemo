@@ -875,3 +875,33 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
 .master-h small { font-size: var(--step--1); font-weight: 400; color: var(--muted); margin-left: 8px; }
 .master-body > .filter:first-child { margin-bottom: 10px; }
 .plans-h { margin-top: 6px; }
+
+/* Plan editor: statements table with the plan beside it ------------------ */
+.plan-work { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.plan-work > .plan-picker { grid-column: 1; grid-row: 1; margin-top: 0; }
+.plan-work > .plan-summary { grid-column: 2; grid-row: 1; position: sticky; top: 12px; max-height: calc(100vh - 24px);
+  overflow: auto; margin: 0; overscroll-behavior: contain; }
+.plan-work [data-plan-summary] { display: block; }
+.plan-work .sum-strand + .sum-strand { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--rule); }
+.sum-count { font-weight: 400; color: var(--muted); }
+.sum-last { font-size: 0.75rem; color: var(--do); min-height: 0; margin: -2px 0 6px; }
+.sum-last:empty { display: none; }
+.sum-last.removed { color: var(--excludes); }
+.sum-list li.flash { animation: sum-flash 1.8s ease-out; }
+@keyframes sum-flash { 0% { background: color-mix(in srgb, var(--do) 28%, var(--surface)); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .sum-list li.flash { animation: none; outline: 2px solid var(--do); } }
+.plan-tray { display: none; }
+@media (max-width: 1100px) {
+  .plan-work { grid-template-columns: minmax(0, 1fr); }
+  .plan-work > .plan-summary { grid-column: 1; grid-row: 1; position: static; max-height: none; overflow: visible; }
+  .plan-work > .plan-picker { grid-row: 2; }
+  .plan-tray { display: flex; position: fixed; left: 50%; bottom: 12px; transform: translate(-50%, 140%); z-index: 20;
+    gap: 10px; align-items: center; max-width: calc(100vw - 24px); padding: 8px 14px; border-radius: 999px;
+    background: var(--ink); color: var(--paper); font-size: var(--step--1); box-shadow: 0 4px 18px rgb(0 0 0 / 0.18);
+    transition: transform 200ms ease; }
+  .plan-tray.show { transform: translate(-50%, 0); }
+  .plan-tray .tray-last { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 50vw; opacity: 0.85; }
+  .plan-tray a { color: inherit; font-weight: 700; white-space: nowrap; }
+  .plan-tray > span:first-child { white-space: nowrap; }
+}
+@media print { .plan-work { display: block; } .plan-work > .plan-summary { position: static; max-height: none; overflow: visible; } .plan-tray { display: none !important; } }

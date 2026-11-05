@@ -1013,7 +1013,7 @@
     return ix.doc.strands.filter((s) => byStrand.has(s)).map((s) => `<div class="sum-strand"><h3>${esc(s.name)}</h3>${
       [...byStrand.get(s)].map(([sub, hs]) => `<div class="sum-sub"><p class="ss-tag ${sub === "Whole strand" ? "whole" : "sub"}">${esc(sub)}</p>${
         ["know", "do"].map((k) => { const xs = hs.filter((h) => h.s.kind === k); return xs.length ? `<p class="kd-h ${k}">${k === "know" ? "Know" : "Do"}</p><ul class="sum-list">${xs.map((h) =>
-          `<li><span>${inlineMd(h.s.body)}${h.block.level !== plan.level ? ` <small class="plan-also">(${LEVEL_NAME[h.block.level]} Level)</small>` : ""}</span>
+          `<li data-code="${esc(h.s.code)}"><span>${inlineMd(h.s.body)}${h.block.level !== plan.level ? ` <small class="plan-also">(${LEVEL_NAME[h.block.level]} Level)</small>` : ""}</span>
             <button type="button" class="link-btn" data-unpick="${esc(h.s.code)}" aria-label="Remove from plan">Remove</button></li>`).join("")}</ul>` : ""; }).join("")}</div>`).join("")}</div>`).join("");
   }
 
@@ -1051,23 +1051,59 @@
           </div>
         </div>
       </div>
-      <section class="plan-summary"><h2 class="block-title">In this plan</h2><div data-plan-summary>${planSummaryHtml(ix, plan)}</div></section>
-      <section class="plan-picker level-section ${lvlClass(plan.level)}">
-        <h2 class="section-title">${levelMark(plan.level)}Choose statements: ${LEVEL_NAME[plan.level]} Level</h2>
-        <p class="section-sub">Tick the Know and Do statements this plan covers. Changes are saved as you go.</p>
-        <div data-plan-picker>${planPickerHtml(ix, plan)}</div>
-      </section>`;
+      <div class="plan-work">
+        <aside class="plan-summary" id="plan-summary" aria-labelledby="plan-summary-h">
+          <h2 class="block-title" id="plan-summary-h">In this plan <span class="sum-count">(<span data-count="total">${cov.know + cov.do}</span>)</span></h2>
+          <p class="sum-last" role="status" aria-live="polite"></p>
+          <div data-plan-summary>${planSummaryHtml(ix, plan)}</div>
+        </aside>
+        <section class="plan-picker level-section ${lvlClass(plan.level)}">
+          <h2 class="section-title">${levelMark(plan.level)}Choose statements: ${LEVEL_NAME[plan.level]} Level</h2>
+          <p class="section-sub">Tick the Know and Do statements this plan covers. Each change is added to the plan and saved straight away.</p>
+          <div data-plan-picker>${planPickerHtml(ix, plan)}</div>
+        </section>
+      </div>
+      <div class="plan-tray"><span><strong data-tray="count">${cov.know + cov.do}</strong> in this plan</span>
+        <span class="tray-last" data-tray="last"></span><a href="#plan-summary" data-tray-link>See plan</a></div>`;
     document.title = `${plan.name || "Untitled plan"} · Planner · Curriculum Explorer`;
   }
 
   // Planner events (delegated; the planner views are re-rendered into main)
   function planStatus(text) { const el = main.querySelector(".plan-status"); if (el) el.textContent = text; }
   function savePlanAndReport(plan) { planStatus(putPlan(plan) ? `Saved ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Not saved: this browser is blocking storage"); }
-  function refreshPlanParts(ix, plan) {
+  function refreshPlanParts(ix, plan, change) {
     const cov = planCoverage(ix, plan);
-    main.querySelector('[data-count="know"]').textContent = cov.know;
-    main.querySelector('[data-count="do"]').textContent = cov.do;
+    const set = (sel, v) => main.querySelectorAll(sel).forEach((el) => { el.textContent = v; });
+    set('[data-count="know"]', cov.know);
+    set('[data-count="do"]', cov.do);
+    set('[data-count="total"]', cov.know + cov.do);
+    set('[data-tray="count"]', cov.know + cov.do);
+    const aside = main.querySelector(".plan-summary");
+    const keep = aside ? aside.scrollTop : 0;
     main.querySelector("[data-plan-summary]").innerHTML = planSummaryHtml(ix, plan);
+    if (aside) aside.scrollTop = keep;
+    if (!change) return;
+    // say what changed, and point to it in the plan
+    const h = ix.statements.get(change.code);
+    const text = h ? h.s.body.replace(/\s+/g, " ") : "statement";
+    const short = text.length > 70 ? text.slice(0, 70) + "…" : text;
+    const msg = `${change.added ? "Added" : "Removed"} ${h ? (h.s.kind === "know" ? "Know" : "Do") : ""}: ${short}`;
+    set(".sum-last", msg);
+    set('[data-tray="last"]', msg);
+    main.querySelector(".sum-last")?.classList.toggle("removed", !change.added);
+    const tray = main.querySelector(".plan-tray");
+    if (tray) { tray.classList.add("show"); clearTimeout(tray._t); tray._t = setTimeout(() => tray.classList.remove("show"), 4000); }
+    if (change.added) {
+      const li = main.querySelector(`.sum-list li[data-code="${CSS.escape(change.code)}"]`);
+      if (li) {
+        li.classList.add("flash");
+        // bring it into view inside the sticky panel without moving the page
+        if (aside && getComputedStyle(aside).position === "sticky") {
+          const a = aside.getBoundingClientRect(), b = li.getBoundingClientRect();
+          if (b.top < a.top || b.bottom > a.bottom) aside.scrollTop += b.top - a.top - a.height / 3;
+        }
+      }
+    }
   }
   async function plannerClick(e) {
     const r = parseHash(); const area = state.area; const ix = state.areas[area];
@@ -1104,6 +1140,13 @@
       return true;
     }
     if (t.closest("[data-plan-print]")) { window.print(); return true; }
+    if (t.closest("[data-tray-link]")) {
+      const aside = main.querySelector("#plan-summary");
+      aside?.scrollIntoView({ behavior: "smooth", block: "start" });
+      aside?.querySelector("h2")?.setAttribute("tabindex", "-1");
+      aside?.querySelector("h2")?.focus({ preventScroll: true });
+      return true;
+    }
     const pf = t.closest("[data-pf]");
     if (pf && r.a) {
       const key = pf.dataset.pf, v = pf.dataset.pfValue;
@@ -1120,7 +1163,7 @@
       savePlanAndReport(plan);
       const box = main.querySelector(`input[data-pick="${CSS.escape(un.dataset.unpick)}"]`);
       if (box) box.checked = false;
-      refreshPlanParts(ix, plan);
+      refreshPlanParts(ix, plan, { code: un.dataset.unpick, added: false });
       return true;
     }
     return false;
@@ -1157,7 +1200,7 @@
       // keep the order the statements appear in the framework
       plan.statements = [...ix.statements.keys()].filter((c) => set.has(c)).concat([...set].filter((c) => !ix.statements.has(c)));
       savePlanAndReport(plan);
-      refreshPlanParts(ix, plan);
+      refreshPlanParts(ix, plan, { code: t.dataset.pick, added: t.checked });
       return;
     }
     const field = t.dataset.planField;
@@ -1281,7 +1324,8 @@
 
   main.addEventListener("click", (e) => {
     if (parseHash().view === "planner" && auditClick(e)) return;
-    if (parseHash().view === "planner" && e.target.closest("[data-plan-new], [data-plan-del], [data-plan-dup], [data-plan-export], [data-plan-print], [data-pf], [data-unpick]")) {
+    if (parseHash().view === "planner" && e.target.closest("[data-plan-new], [data-plan-del], [data-plan-dup], [data-plan-export], [data-plan-print], [data-pf], [data-unpick], [data-tray-link]")) {
+      e.preventDefault();
       plannerClick(e);
       return;
     }
