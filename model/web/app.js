@@ -239,15 +239,52 @@
       }).join("")}
     </div>`;
   }
+  // Layout of Know and Do inside a table: stacked rows, side by side within each cell, or flip cards.
+  // Each table has its own switch; the last choice is remembered (in this browser) as the default.
+  const KD_LAYOUTS = [["stacked", "Stacked"], ["side", "Side by side"], ["cards", "Cards"]];
+  const KD_TABLES = new Map();          // table id -> {cols, o, opts}, so one table can be redrawn alone
+  let kdSeq = 0;
+  function defaultLayout() {
+    try { const v = localStorage.getItem("kd-layout"); return KD_LAYOUTS.some(([k]) => k === v) ? v : "stacked"; }
+    catch { return "stacked"; }
+  }
+  function rememberLayout(v) { try { localStorage.setItem("kd-layout", v); } catch { /* storage unavailable */ } }
+
   function kdTable(cols, o, opts = {}) {
+    const id = opts.id || `kd-${++kdSeq}`;
+    const both = o.showKD === "kd";
+    const layout = both ? (opts.layout || defaultLayout()) : "stacked";
+    KD_TABLES.set(id, { cols, o, opts: { ...opts, id } });
+
     const listHtml = (sts) => sts.length
       ? `<ul>${sts.map((x) => `<li title="${esc(x.code)}">${inlineMd(x.body)}</li>`).join("")}</ul>` : "";
+    const of = (g, k) => g.sts.filter((x) => x.kind === k);
     const labels = new Set(cols.flatMap((c) => c.groups.filter((g) => g.sts.length).map((g) => g.label)));
     const showTags = labels.size > 1;
+    const tagHtml = (g) => showTags ? `<p class="ss-tag ${g.origin}">${esc(g.label)}</p>` : "";
+    const none = `<p class="none">None at this level.</p>`;
+
+    // stacked: one row per kind
     const cell = (c, k) => c.groups.map((g) => {
-      const list = listHtml(g.sts.filter((x) => x.kind === k));
-      return list ? (showTags ? `<p class="ss-tag ${g.origin}">${esc(g.label)}</p>` : "") + list : "";
-    }).join("") || `<p class="none">None at this level.</p>`;
+      const list = listHtml(of(g, k));
+      return list ? tagHtml(g) + list : "";
+    }).join("") || none;
+    // side by side: per group, Know and Do next to each other
+    const sideCell = (c) => c.groups.filter((g) => of(g, "know").length || of(g, "do").length).map((g) => `${tagHtml(g)}
+      <div class="kd-pair"><div class="kd-col know"><p class="kd-h">Know</p>${listHtml(of(g, "know")) || none}</div>
+      <div class="kd-col do"><p class="kd-h">Do</p>${listHtml(of(g, "do")) || none}</div></div>`).join("") || none;
+    // cards: per group, Know on the front; select to turn it over to the Do statements
+    const cardCell = (c) => c.groups.filter((g) => of(g, "know").length || of(g, "do").length).map((g) => {
+      const k = of(g, "know"), d = of(g, "do");
+      return `<div class="kd-card" data-face="know">
+        ${tagHtml(g)}
+        <div class="face know"><p class="kd-h">Know</p>${listHtml(k) || none}
+          <button type="button" class="kd-flip" data-face-to="do">Show Do (${d.length})</button></div>
+        <div class="face do"><p class="kd-h">Do</p>${listHtml(d) || none}
+          <button type="button" class="kd-flip" data-face-to="know">Back to Know (${k.length})</button></div>
+      </div>`;
+    }).join("") || none;
+
     const allExtras = (c) => c.groups.flatMap((g) => g.sts.filter((x) => EXTRA_KINDS.includes(x.kind)).map((x) => ({ x, g })));
     const hasExtras = cols.some((c) => allExtras(c).length);
     const extrasCell = (c) => {
@@ -264,16 +301,22 @@
         || `<p class="none">No Understanding stated.</p>`;
     };
     const row = (cls, name, fn) => `<tr class="${cls}"><th scope="row">${name}</th>${cols.map((c) => `<td>${fn(c)}</td>`).join("")}</tr>`;
-    return `<div class="ss-wrap" tabindex="0" role="region" aria-label="${esc(opts.label || "Know and Do table")}">
-      <table class="ss-table ${opts.tableClass || ""}${o.condensed ? " condensed" : ""}" style="--cols:${cols.length}">
+    const kdRows = layout === "side" ? row("r-kd", "Know and Do", sideCell)
+      : layout === "cards" ? row("r-kd", "Know, then Do", cardCell)
+      : `${o.showKD !== "d" ? row("r-k", "Know", (c) => cell(c, "know")) : ""}${o.showKD !== "k" ? row("r-d", "Do", (c) => cell(c, "do")) : ""}`;
+
+    return `<div class="kd-block" id="${id}">
+      ${both ? `<div class="kd-layout" role="group" aria-label="Layout of Know and Do"><span>Layout</span>${KD_LAYOUTS.map(([v, label]) =>
+        `<button type="button" aria-pressed="${layout === v}" data-kd-layout="${v}">${label}</button>`).join("")}</div>` : ""}
+      <div class="ss-wrap" tabindex="0" role="region" aria-label="${esc(opts.label || "Know and Do table")}">
+      <table class="ss-table layout-${layout} ${opts.tableClass || ""}${o.condensed ? " condensed" : ""}" style="--cols:${cols.length}">
         <thead><tr><td class="corner"></td>${cols.map((c) => `<th scope="col" class="${c.headClass || ""}"${c.id ? ` id="${c.id}"` : ""}>${c.head}</th>`).join("")}</tr></thead>
         <tbody>
           ${row("r-u", "Understand", undCell)}
-          ${o.showKD !== "d" ? row("r-k", "Know", (c) => cell(c, "know")) : ""}
-          ${o.showKD !== "k" ? row("r-d", "Do", (c) => cell(c, "do")) : ""}
+          ${kdRows}
           ${hasExtras ? row("r-n", "Notes", extrasCell) : ""}
         </tbody>
-      </table></div>`;
+      </table></div></div>`;
   }
   /**
    * Everything one strand holds at one level, as labelled groups: the statements written for the whole strand,
@@ -662,6 +705,7 @@
     const r = parseHash();
     const areaSlug = state.manifest.some((m) => m.slug === r.area) ? r.area : state.manifest[0].slug;
     if (areaSlug !== r.area) { location.replace(href(areaSlug, "overview")); return; }
+    KD_TABLES.clear();
     if (HIDDEN_VIEWS.has(r.view)) { location.replace(href(areaSlug, "overview")); return; }
     state.area = areaSlug;
     const ix = await loadArea(areaSlug);
@@ -690,6 +734,26 @@
 
   // Buttons that navigate (stair, filters)
   main.addEventListener("click", (e) => {
+    // Know/Do layout for one table: redraw just that table and remember the choice
+    const lay = e.target.closest("button[data-kd-layout]");
+    if (lay) {
+      const block = lay.closest(".kd-block");
+      const t = block && KD_TABLES.get(block.id);
+      if (t) {
+        rememberLayout(lay.dataset.kdLayout);
+        block.outerHTML = kdTable(t.cols, t.o, { ...t.opts, layout: lay.dataset.kdLayout });
+        document.querySelector(`#${t.opts.id} button[data-kd-layout="${lay.dataset.kdLayout}"]`)?.focus();
+      }
+      return;
+    }
+    // Flip a Know/Do card
+    const flip = e.target.closest("button.kd-flip");
+    if (flip) {
+      const card = flip.closest(".kd-card");
+      card.dataset.face = flip.dataset.faceTo;
+      card.querySelector(`.face.${flip.dataset.faceTo} .kd-flip`)?.focus();
+      return;
+    }
     const toggle = e.target.closest("button.pm-toggle");
     if (toggle) setStrandsOpen([toggle.dataset.strand], toggle.getAttribute("aria-expanded") !== "true");
     const expand = e.target.closest("button[data-expand]");

@@ -615,3 +615,40 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
 .ss-table thead th[class*="lvl-"] { background: var(--lvl); color: var(--lvl-ink); }
 .ss-table .th-sub { display: block; font-weight: 400; font-size: 0.75rem; opacity: 0.85; margin-top: 2px; }
 .multi-filter { row-gap: 6px; }
+
+/* Know/Do layout switch and layouts ------------------------------------- */
+.kd-layout { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
+.kd-layout span { color: var(--muted); font-size: var(--step--1); margin-right: 4px; }
+.kd-layout button { border: 1px solid var(--rule-strong); background: var(--surface); padding: 3px 10px; border-radius: 999px;
+  cursor: pointer; font-size: var(--step--1); }
+.kd-layout button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.kd-block + .kd-block { margin-top: 18px; }
+.ss-table .r-kd th { color: var(--ink); }
+
+/* side by side: wider columns, Know and Do in two mini-columns */
+.ss-table.layout-side { min-width: calc(96px + var(--cols) * 400px); }
+.kd-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.kd-pair + .ss-tag, .kd-card + .kd-card { margin-top: 10px; }
+.kd-col.know { border-right: 1px solid var(--rule); padding-right: 12px; }
+.kd-h { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+.kd-col.know .kd-h, .face.know .kd-h { color: var(--know); }
+.kd-col.do .kd-h, .face.do .kd-h { color: var(--do); }
+
+/* cards: Know on the front, Do on the back */
+.kd-card { border: 1px solid var(--rule-strong); border-radius: var(--radius); padding: 8px 10px; background: var(--surface);
+  border-left: 4px solid var(--know); }
+.kd-card[data-face="do"] { border-left-color: var(--do); background: color-mix(in srgb, var(--do) 6%, var(--surface)); }
+.kd-card[data-face="know"] .face.do, .kd-card[data-face="do"] .face.know { display: none; }
+.kd-card .ss-tag { margin-top: 0; }
+.kd-flip { margin-top: 8px; width: 100%; border: 1px solid var(--rule-strong); background: var(--paper); border-radius: var(--radius);
+  padding: 4px 8px; cursor: pointer; font-size: 0.75rem; font-weight: 700; text-align: left; }
+.kd-flip:hover { border-color: var(--ink); }
+.face.know .kd-flip { color: var(--do); }
+.face.do .kd-flip { color: var(--know); }
+
+.ss-table.condensed .kd-h { font-size: 0.6875rem; margin-bottom: 2px; }
+.ss-table.condensed .kd-card { padding: 5px 7px; }
+.ss-table.condensed .kd-col > ul > li, .ss-table.condensed .face > ul > li { padding: 1px 0 1px 0.9em; border: 0; position: relative; }
+.ss-table.condensed .kd-col > ul > li::before, .ss-table.condensed .face > ul > li::before { content: "•"; position: absolute; left: 0; color: var(--muted); }
+@media (min-width: 1024px) { .ss-table.condensed.layout-side { min-width: calc(76px + var(--cols) * 320px); } }
+@media print { .kd-layout, .kd-flip { display: none; } .kd-card .face { display: block !important; } }
