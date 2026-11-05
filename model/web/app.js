@@ -266,7 +266,9 @@
       ? `<ul>${sts.map((x) => `<li title="${esc(x.code)}">${inlineMd(x.body)}</li>`).join("")}</ul>` : "";
     const of = (g, k) => g.sts.filter((x) => x.kind === k);
     const labels = new Set(cols.flatMap((c) => c.groups.filter((g) => g.sts.length).map((g) => g.label)));
-    const showTags = labels.size > 1;
+    // By level: one band of rows per sub-strand, so the same sub-strand lines up across every strand
+    const grouped = !!opts.groupRows && labels.size > 1;
+    const showTags = labels.size > 1 && !grouped;
     const tagHtml = (g) => showTags ? `<p class="ss-tag ${g.origin}">${esc(g.label)}</p>` : "";
     const none = `<p class="none">None at this level.</p>`;
     // Notes, Includes and Excludes belong to a group: each group gets its own Notes link beside its statements
@@ -281,6 +283,19 @@
     // the notes link sits with the last statements shown for the group
     const lastKind = o.showKD === "k" ? "know" : "do";
 
+    const pairHtml = (g) => `${hasKD(g) ? `
+      <div class="kd-pair"><div class="kd-col know"><p class="kd-h">Know</p>${listHtml(of(g, "know")) || none}</div>
+      <div class="kd-col do"><p class="kd-h">Do</p>${listHtml(of(g, "do")) || none}</div></div>` : ""}${notesHtml(g)}`;
+    const cardHtml = (g, withTag) => {
+      const k = of(g, "know"), d = of(g, "do");
+      if (!k.length && !d.length) return (withTag ? tagHtml(g) : "") + notesHtml(g);
+      return `<div class="kd-card" data-face="know" tabindex="0" role="group" aria-label="${esc(g.label)}: showing Know. Select to show Do.">
+        ${withTag ? tagHtml(g) : ""}
+        <div class="face know"><p class="kd-h">Know <span class="kd-turn">Click for Do (${d.length}) ↻</span></p>${listHtml(k) || none}</div>
+        <div class="face do"><p class="kd-h">Do <span class="kd-turn">Click for Know (${k.length}) ↻</span></p>${listHtml(d) || none}</div>
+        ${notesHtml(g)}
+      </div>`;
+    };
     // stacked: one row per kind
     const cell = (c, k) => shown(c).map((g) => {
       const list = listHtml(of(g, k));
@@ -288,20 +303,9 @@
       return list || notes ? tagHtml(g) + list + notes : "";
     }).join("") || none;
     // side by side: per group, Know and Do next to each other, then that group's notes
-    const sideCell = (c) => shown(c).map((g) => `${tagHtml(g)}${hasKD(g) ? `
-      <div class="kd-pair"><div class="kd-col know"><p class="kd-h">Know</p>${listHtml(of(g, "know")) || none}</div>
-      <div class="kd-col do"><p class="kd-h">Do</p>${listHtml(of(g, "do")) || none}</div></div>` : ""}${notesHtml(g)}`).join("") || none;
+    const sideCell = (c) => shown(c).map((g) => tagHtml(g) + pairHtml(g)).join("") || none;
     // cards: per group, Know on the front; select anywhere on the card to turn it over to Do
-    const cardCell = (c) => shown(c).map((g) => {
-      const k = of(g, "know"), d = of(g, "do");
-      if (!k.length && !d.length) return tagHtml(g) + notesHtml(g);
-      return `<div class="kd-card" data-face="know" tabindex="0" role="group" aria-label="${esc(g.label)}: showing Know. Select to show Do.">
-        ${tagHtml(g)}
-        <div class="face know"><p class="kd-h">Know <span class="kd-turn">Click for Do (${d.length}) ↻</span></p>${listHtml(k) || none}</div>
-        <div class="face do"><p class="kd-h">Do <span class="kd-turn">Click for Know (${k.length}) ↻</span></p>${listHtml(d) || none}</div>
-        ${notesHtml(g)}
-      </div>`;
-    }).join("") || none;
+    const cardCell = (c) => shown(c).map((g) => cardHtml(g, true)).join("") || none;
 
     const undCell = (c) => {
       const tag = c.und.length > 1 || c.und.some((u) => u.label && u.label !== c.und[0].label);
@@ -310,9 +314,29 @@
         || `<p class="none">No Understanding stated.</p>`;
     };
     const row = (cls, name, fn) => `<tr class="${cls}"><th scope="row">${name}</th>${cols.map((c) => `<td>${fn(c)}</td>`).join("")}</tr>`;
-    const kdRows = layout === "side" ? row("r-kd", "Know and Do", sideCell)
+    let kdRows = layout === "side" ? row("r-kd", "Know and Do", sideCell)
       : layout === "cards" ? row("r-kd", "Know, then Do", cardCell)
       : `${o.showKD !== "d" ? row("r-k", "Know", (c) => cell(c, "know")) : ""}${o.showKD !== "k" ? row("r-d", "Do", (c) => cell(c, "do")) : ""}`;
+    if (grouped) {
+      // sub-strand order: the whole strand first, then as they first appear across the strands
+      const order = [];
+      for (const c of cols) for (const g of c.groups) if (g.sts.length && !order.includes(g.label)) order.push(g.label);
+      order.sort((x, y) => (y === "Whole strand") - (x === "Whole strand"));
+      const kinds = o.showKD === "k" ? ["know"] : o.showKD === "d" ? ["do"] : ["know", "do"];
+      const na = `<td class="na" aria-label="Not part of this strand"></td>`;
+      kdRows = order.map((label) => {
+        const gOf = (c) => c.groups.find((g) => g.label === label && (g.sts.some((x) => kinds.includes(x.kind)) || extrasOf(g).length));
+        if (!cols.some(gOf)) return "";
+        const band = `<tr class="r-group"><th scope="colgroup" colspan="${cols.length + 1}"><span class="grp-label">${esc(label)}</span></th></tr>`;
+        const groupRow = (cls, name, fn) => `<tr class="${cls}"><th scope="row">${name}</th>${cols.map((c) => { const g = gOf(c); return g ? `<td>${fn(g)}</td>` : na; }).join("")}</tr>`;
+        if (layout === "side") return band + groupRow("r-kd", "Know and Do", pairHtml);
+        if (layout === "cards") return band + groupRow("r-kd", "Know, then Do", (g) => cardHtml(g, false));
+        return band + kinds.map((k) => groupRow(k === "know" ? "r-k" : "r-d", k === "know" ? "Know" : "Do", (g) => {
+          const list = listHtml(of(g, k)), notes = k === lastKind ? notesHtml(g) : "";
+          return list || notes ? list + notes : none;
+        })).join("");
+      }).join("");
+    }
 
     return `<div class="kd-block" id="${id}">
       <div class="kd-bar">${both ? `<div class="kd-layout" role="group" aria-label="Layout of Know and Do"><span>Layout</span>${KD_LAYOUTS.map(([v, label]) =>
@@ -378,7 +402,7 @@
         (next) => routeWith({ strandSel: next })) : ""}
       ${displayBarHtml(o, (d) => routeWith(d))}
       <section class="level-section ${lvlClass(level)}">
-        ${cols.length ? kdTable(cols, o, { tableClass: lvlClass(level), label: `${LEVEL_NAME[level]} Level` }) : `<p class="empty">No strands at this level.</p>`}
+        ${cols.length ? kdTable(cols, o, { tableClass: lvlClass(level), label: `${LEVEL_NAME[level]} Level`, groupRows: true }) : `<p class="empty">No strands at this level.</p>`}
       </section>`;
     document.title = `${LEVEL_NAME[level]} Level · ${ix.doc.name} · Curriculum Explorer`;
   }
