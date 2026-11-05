@@ -946,3 +946,6 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
 .chip.na { border-style: dashed; opacity: 0.8; }
 .chip.na small { font-weight: 400; color: var(--muted); margin-left: 3px; }
 .empty .link-btn { margin-left: 8px; }
+.plan-layout { margin: 4px 0 8px; }
+.ss-table.plan-pick.layout-side .kd-col .pick-list li { padding: 1px 0; }
+.ss-table.plan-pick.layout-side .pick { padding: 2px 3px; gap: 5px; }

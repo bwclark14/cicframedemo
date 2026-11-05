@@ -700,7 +700,11 @@
   // the CfE level a year group usually works at (a suggestion only; learners progress at their own pace)
   const YEAR_LEVEL = { P1: "early", P2: "first", P3: "first", P4: "first", P5: "second", P6: "second", P7: "second",
     S1: "third", S2: "third", S3: "third" };
-  const planUI = { id: null, level: null, strands: [], subs: [] };   // picker filters for the open plan
+  const planUI = { id: null, level: null, strands: [], subs: [], layout: null };   // picker filters and layout for the open plan
+  const pickLayout = () => {
+    if (!planUI.layout) { try { planUI.layout = localStorage.getItem("plan-layout") === "side" ? "side" : "stacked"; } catch { planUI.layout = "stacked"; } }
+    return planUI.layout;
+  };
   let planSaveTimer = null;
 
   /** A plan's levels in framework order; older plans have a single `level`. */
@@ -994,6 +998,14 @@
     };
     const cell = (c, k) => c.groups.map((g) => { const l = list(g, k); return l ? (showTags ? `<p class="ss-tag ${g.origin}">${esc(g.label)}</p>` : "") + l : ""; }).join("")
       || `<p class="none">None at this level.</p>`;
+    // side by side: per group, the Know and Do tick-lists next to each other
+    const none = `<p class="none">None</p>`;
+    const sideCell = (c) => c.groups.filter((g) => g.sts.some((x) => x.kind === "know" || x.kind === "do")).map((g) =>
+      `${showTags ? `<p class="ss-tag ${g.origin}">${esc(g.label)}</p>` : ""}<div class="kd-pair"><div class="kd-col know"><p class="kd-h">Know</p>${list(g, "know") || none}</div>
+        <div class="kd-col do"><p class="kd-h">Do</p>${list(g, "do") || none}</div></div>`).join("") || `<p class="none">None at this level.</p>`;
+    const layout = pickLayout();
+    const layoutBar = `<div class="kd-layout plan-layout" role="group" aria-label="Layout of Know and Do"><span>Layout</span>${[["stacked", "Stacked"], ["side", "Side by side"]].map(([v, l]) =>
+      `<button type="button" aria-pressed="${layout === v}" data-plan-layout="${v}">${l}</button>`).join("")}</div>`;
     // Filters persist across levels: a selection that does not exist at this level stays visible, marked
     const nameOf = { strands: (v) => ix.doc.strands.find((s) => s.slug === v)?.name,
       subs: (v) => (v === "_whole" ? "Whole strand" : ix.subs.find((s) => s.slug === v)?.name) };
@@ -1008,13 +1020,15 @@
     return `
       ${strands.length > 1 ? chips("Strands", "All strands", strands.map((s) => ({ value: s.slug, label: s.name })), planUI.strands, "strands") : ""}
       ${subOptions.length > 1 ? chips("Sub-strands", "All", subOptions, planUI.subs, "subs") : ""}
-      ${cols.length ? `<div class="ss-wrap" tabindex="0" role="region" aria-label="Statements at ${LEVEL_NAME[level]} Level">
-        <table class="ss-table plan-pick ${lvlClass(level)}" style="--cols:${cols.length}">
+      ${cols.length ? `${layoutBar}<div class="ss-wrap" tabindex="0" role="region" aria-label="Statements at ${LEVEL_NAME[level]} Level">
+        <table class="ss-table plan-pick layout-${layout} ${lvlClass(level)}" style="--cols:${cols.length}">
           <thead><tr><td class="corner"></td>${cols.map((c) => `<th scope="col">${esc(c.strand.name)}</th>`).join("")}</tr></thead>
           <tbody>
             <tr class="r-u"><th scope="row">Understand</th>${cols.map((c) => `<td>${c.und.map((u) => `<p class="ss-u">${esc(u.text)}</p>`).join("") || `<p class="none">—</p>`}</td>`).join("")}</tr>
-            <tr class="r-k"><th scope="row">Know</th>${cols.map((c) => `<td>${cell(c, "know")}</td>`).join("")}</tr>
-            <tr class="r-d"><th scope="row">Do</th>${cols.map((c) => `<td>${cell(c, "do")}</td>`).join("")}</tr>
+            ${layout === "side"
+              ? `<tr class="r-kd"><th scope="row">Know and Do</th>${cols.map((c) => `<td>${sideCell(c)}</td>`).join("")}</tr>`
+              : `<tr class="r-k"><th scope="row">Know</th>${cols.map((c) => `<td>${cell(c, "know")}</td>`).join("")}</tr>
+            <tr class="r-d"><th scope="row">Do</th>${cols.map((c) => `<td>${cell(c, "do")}</td>`).join("")}</tr>`}
           </tbody></table></div>` : `<p class="empty">Nothing matches these filters at ${LEVEL_NAME[level]} Level.
             <button type="button" class="link-btn" data-pf-clear>Clear filters</button></p>`}`;
   }
@@ -1215,6 +1229,19 @@
       aside?.scrollIntoView({ behavior: "smooth", block: "start" });
       aside?.querySelector("h2")?.setAttribute("tabindex", "-1");
       aside?.querySelector("h2")?.focus({ preventScroll: true });
+      return true;
+    }
+    const lay = t.closest("[data-plan-layout]");
+    if (lay && r.a) {
+      planUI.layout = lay.dataset.planLayout;
+      try { localStorage.setItem("plan-layout", planUI.layout); } catch { /* storage unavailable */ }
+      const plan = getPlan(r.a);
+      if (plan) {
+        const y = window.scrollY;
+        main.querySelector("[data-plan-picker]").innerHTML = planPickerHtml(ix, plan);
+        window.scrollTo(0, y);
+        main.querySelector(`[data-plan-layout="${planUI.layout}"]`)?.focus();
+      }
       return true;
     }
     if (t.closest("[data-pf-clear]") && r.a) {
@@ -1653,7 +1680,7 @@
     const exp = e.target.closest("button[data-export]");
     if (exp) { handleExport(exp); return; }
     if (parseHash().view === "planner" && auditClick(e)) return;
-    if (parseHash().view === "planner" && e.target.closest("[data-plan-new], [data-plan-del], [data-plan-dup], [data-plan-export], [data-plan-print], [data-pf], [data-unpick], [data-tray-link], [data-plan-level], [data-plan-tab], [data-pf-clear]")) {
+    if (parseHash().view === "planner" && e.target.closest("[data-plan-new], [data-plan-del], [data-plan-dup], [data-plan-export], [data-plan-print], [data-pf], [data-unpick], [data-tray-link], [data-plan-level], [data-plan-tab], [data-pf-clear], [data-plan-layout]")) {
       e.preventDefault();
       plannerClick(e);
       return;
