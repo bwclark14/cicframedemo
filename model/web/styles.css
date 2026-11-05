@@ -961,3 +961,28 @@ table th a:hover, table th a:focus-visible { text-decoration: underline; text-un
 .ss-table td.na { background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--rule) 55%, transparent) 6px 7px); }
 .ss-table.condensed .r-group th { padding: 3px 8px 2px; }
 .ss-table.condensed .r-group .grp-label { font-size: var(--step--1); }
+
+/* Collapsible filter panels ------------------------------------------------ */
+.filter-panel { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); padding: 6px 12px 8px; margin: 0 0 12px; }
+.filter-panel.collapsed { padding-bottom: 6px; }
+.fp-head { display: flex; align-items: baseline; gap: 10px; min-height: 22px; }
+.fp-toggle { appearance: none; border: 0; background: none; padding: 0 0 0 16px; font: inherit; font-size: 0.75rem; font-weight: 700;
+  color: var(--muted); cursor: pointer; position: relative; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.04em; }
+.fp-toggle::before { content: "▸"; position: absolute; left: 0; top: 0; transition: transform 120ms ease; }
+.fp-toggle[aria-expanded="true"]::before { transform: rotate(90deg); }
+.fp-toggle:hover { color: var(--ink); }
+.fp-summary { color: var(--ink); font-size: var(--step--1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.filter-panel:not(.collapsed) .fp-summary { display: none; }
+.fp-body { margin-top: 6px; }
+.fp-body > :last-child { margin-bottom: 0; }
+.fp-body .picker { margin-bottom: 8px; }
+.fp-body .sub-grid-wrap { margin-bottom: 8px; }
+
+/* By level: header and Understand row stay in view while the table scrolls */
+.ss-wrap.sticky-head { max-height: calc(100vh - 16px); overflow: auto; overscroll-behavior: contain; }
+.ss-wrap.sticky-head thead { position: sticky; top: 0; z-index: 3; }
+.ss-table thead tr.r-u th { position: sticky; left: 0; z-index: 4; background: var(--surface); color: var(--understand);
+  font-size: var(--step--1); font-weight: 700; text-align: left; vertical-align: top; }
+.ss-table thead tr.r-u td { border-bottom: 2px solid color-mix(in srgb, var(--understand) 35%, var(--rule)); box-shadow: 0 3px 4px -3px rgb(0 0 0 / 0.15); }
+.ss-table thead tr.r-u th { border-bottom: 2px solid color-mix(in srgb, var(--understand) 35%, var(--rule)); }
+@media print { .ss-wrap.sticky-head { max-height: none; overflow: visible; } .fp-head { display: none; } .filter-panel { display: none; } }

@@ -234,6 +234,49 @@
       <button type="button" class="chip" aria-pressed="${o.condensed}" data-go="${routeWith({ ...o, condensed: !o.condensed })}">Condensed view</button>
     </div>`;
   }
+  // Filter panels: every page's filters can be hidden; collapsed panels summarise what is selected.
+  const fpOpen = (key) => { try { return localStorage.getItem("fp-" + key) !== "closed"; } catch { return true; } };
+  function filterPanel(key, inner) {
+    const open = fpOpen(key);
+    return `<div class="filter-panel${open ? "" : " collapsed"}" data-fp="${key}">
+      <div class="fp-head"><button type="button" class="fp-toggle" aria-expanded="${open}" aria-controls="fp-${key}">${open ? "Hide filters" : "Show filters"}</button>
+        <span class="fp-summary"></span></div>
+      <div class="fp-body" id="fp-${key}"${open ? "" : " hidden"}>${inner}</div>
+    </div>`;
+  }
+  const FP_DEFAULTS = /^(All strands|All|All levels|All year groups|Everything|Know and Do|Stacked)$/;
+  /** One line describing what a filter panel has selected (shown when it is collapsed). */
+  function filterSummary(panel) {
+    const parts = [];
+    const pickLabel = panel.querySelector(".picker-label")?.childNodes[0]?.textContent.trim();
+    const current = [...panel.querySelectorAll(".picker a[aria-current='true']")].map((a) => a.textContent.trim());
+    if (current.length) parts.push(`${pickLabel || "Selected"}: ${current.join(", ")}`);
+    const subs = [...new Set([...panel.querySelectorAll(".sub-chip[aria-pressed='true']")].map((b) => b.textContent.trim()))];
+    if (subs.length) parts.push(`Sub-strands: ${subs.join(", ")}`);
+    for (const g of panel.querySelectorAll(".filter, .multi-filter, .kd-layout")) {
+      const label = g.querySelector(":scope > span")?.textContent.trim();
+      const on = [...g.querySelectorAll("button[aria-pressed='true']")]
+        .map((b) => b.childNodes[0]?.textContent.trim() || b.textContent.trim()).filter((t) => !FP_DEFAULTS.test(t));
+      if (!on.length) continue;
+      if (g.classList.contains("whole-toggle")) parts.push("Including statements without a sub-strand");
+      else parts.push(label && !g.classList.contains("whole-toggle") ? `${label}: ${on.join(", ")}` : on.join(", "));
+    }
+    return parts.length ? parts.join(" · ") : "Nothing filtered";
+  }
+  function refreshFilterSummaries() {
+    main.querySelectorAll(".filter-panel").forEach((p) => {
+      const el = p.querySelector(":scope > .fp-head .fp-summary");
+      if (el) el.textContent = filterSummary(p.querySelector(":scope > .fp-body"));
+    });
+  }
+  // keep summaries current whatever re-draws the page or part of it
+  let fpPending = false;
+  new MutationObserver(() => {
+    if (fpPending) return;
+    fpPending = true;
+    requestAnimationFrame(() => { fpPending = false; refreshFilterSummaries(); });
+  }).observe(main, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-pressed", "aria-current"] });
+
   /** Multi-select chips with an "All" button; selection [] means all. */
   function multiChipsHtml(label, allLabel, options, sel, routeFor) {
     return `<div class="filter multi-filter" role="group" aria-label="${esc(label)}"><span>${esc(label)}</span>
@@ -341,11 +384,12 @@
     return `<div class="kd-block" id="${id}">
       <div class="kd-bar">${both ? `<div class="kd-layout" role="group" aria-label="Layout of Know and Do"><span>Layout</span>${KD_LAYOUTS.map(([v, label]) =>
         `<button type="button" aria-pressed="${layout === v}" data-kd-layout="${v}">${label}</button>`).join("")}</div>` : ""}${exportBtn("kd")}</div>
-      <div class="ss-wrap" tabindex="0" role="region" aria-label="${esc(opts.label || "Know and Do table")}">
+      <div class="ss-wrap${opts.stickyHead ? " sticky-head" : ""}" tabindex="0" role="region" aria-label="${esc(opts.label || "Know and Do table")}">
       <table class="ss-table layout-${layout} ${opts.tableClass || ""}${o.condensed ? " condensed" : ""}" style="--cols:${cols.length}">
-        <thead><tr><td class="corner"></td>${cols.map((c) => `<th scope="col" class="${c.headClass || ""}"${c.id ? ` id="${c.id}"` : ""}>${c.head}</th>`).join("")}</tr></thead>
+        <thead><tr><td class="corner"></td>${cols.map((c) => `<th scope="col" class="${c.headClass || ""}"${c.id ? ` id="${c.id}"` : ""}>${c.head}</th>`).join("")}</tr>
+          ${opts.stickyHead ? row("r-u", "Understand", undCell) : ""}</thead>
         <tbody>
-          ${row("r-u", "Understand", undCell)}
+          ${opts.stickyHead ? "" : row("r-u", "Understand", undCell)}
           ${kdRows}
         </tbody>
       </table></div></div>`;
@@ -398,11 +442,11 @@
       <div class="page-head"><h1>${LEVEL_NAME[level]} Level</h1>
         <p>Everything learners know, do and understand in ${esc(ix.doc.name)} at ${LEVEL_NAME[level]} Level: one column per strand, with any sub-strands labelled inside it.</p></div>
       ${stairHtml(level, ix, (c) => routeWith({ lvl: c, strandSel: [] }))}
-      ${strands.length > 1 ? multiChipsHtml("Strands", "All strands", strands.map((s) => ({ value: s.slug, label: s.name })), sel,
+      ${filterPanel("level", `${strands.length > 1 ? multiChipsHtml("Strands", "All strands", strands.map((s) => ({ value: s.slug, label: s.name })), sel,
         (next) => routeWith({ strandSel: next })) : ""}
-      ${displayBarHtml(o, (d) => routeWith(d))}
+      ${displayBarHtml(o, (d) => routeWith(d))}`)}
       <section class="level-section ${lvlClass(level)}">
-        ${cols.length ? kdTable(cols, o, { tableClass: lvlClass(level), label: `${LEVEL_NAME[level]} Level`, groupRows: true }) : `<p class="empty">No strands at this level.</p>`}
+        ${cols.length ? kdTable(cols, o, { tableClass: lvlClass(level), label: `${LEVEL_NAME[level]} Level`, groupRows: true, stickyHead: true }) : `<p class="empty">No strands at this level.</p>`}
       </section>`;
     document.title = `${LEVEL_NAME[level]} Level · ${ix.doc.name} · Curriculum Explorer`;
   }
@@ -428,11 +472,11 @@
     main.innerHTML = `
       <div class="page-head"><h1>${esc(strand.name)}</h1>
         <p>${levelRange(strand.levels)}. Read across to see how the strand develops from level to level; sub-strands are labelled inside each column.</p></div>
-      <p class="picker-label" id="strand-pick">Strands</p>
+      ${filterPanel("strand", `<p class="picker-label" id="strand-pick">Strand</p>
       <ul class="picker" aria-labelledby="strand-pick">${ix.doc.strands.map((s) =>
         `<li><a href="${routeWith({ s: s.slug, subSel: [] })}" aria-current="${s === strand}">${esc(s.name)}</a></li>`).join("")}</ul>
       ${subOptions.length > 1 ? multiChipsHtml("Show", "Everything", subOptions, sel, (next) => routeWith({ subSel: next })) : ""}
-      ${displayBarHtml(o, (d) => routeWith(d))}
+      ${displayBarHtml(o, (d) => routeWith(d))}`)}
       <section class="level-section">
         ${cols.length ? kdTable(cols, o, { tableClass: "by-levels", label: `${strand.name} by level` }) : `<p class="empty">Nothing in this strand matches the selection.</p>`}
       </section>`;
@@ -539,7 +583,7 @@
     main.innerHTML = `
       <div class="page-head"><h1>${esc(title)}</h1><p>${intro}</p>${inPlay.length === 1 && !HIDDEN_VIEWS.has("progression")
         ? `<p class="page-links"><a href="${progressionHref(area, "k", [inPlay[0].slug])}">See ${esc(inPlay[0].name)} in the progression matrix</a></p>` : ""}</div>
-      <div class="picker-bar">
+      ${filterPanel("substrand", `<div class="picker-bar">
         <p class="picker-label" id="sub-pick">Sub-strands by level <span class="hint">Select one or more; a sub-strand is selected at every level it appears</span></p>
         <button type="button" class="link-btn" data-go="${routeFor(ix.subs.map((s) => s.slug))}">Select all</button>
       </div>
@@ -568,7 +612,7 @@
         <button type="button" class="chip" aria-pressed="${!!includeWhole}" data-go="${routeFor(selSlugs, strandSel, !includeWhole)}">Include statements without a sub-strand</button>
         <span class="hint">Adds statements written for the whole strand, including levels before the sub-strand starts</span>
       </div>
-      ${displayBarHtml(o, (d) => routeFor(selSlugs, strandSel, includeWhole, { show: d.showKD, condensed: d.condensed }))}
+      ${displayBarHtml(o, (d) => routeFor(selSlugs, strandSel, includeWhole, { show: d.showKD, condensed: d.condensed }))}`)}
       ${sections || `<p class="empty">Nothing to show for this selection.${includeWhole ? "" : " Try including statements without a sub-strand."}</p>`}`;
     document.title = `${title} · ${ix.doc.name} · Curriculum Explorer`;
     if (focusLevel) scrollToId("l-" + focusLevel);
@@ -895,9 +939,14 @@
       <h2 class="master-h" id="master-h"><button type="button" data-master-toggle aria-expanded="${isOpen}" aria-controls="master-body">
         Plan metrics and coverage audit <small>${allPlans.length} plan${allPlans.length === 1 ? "" : "s"} · ${esc(levelScope)}</small></button></h2>
       <div class="master-body" id="master-body"${isOpen ? "" : " hidden"}>
-      <div class="filter" role="group" aria-label="Levels"><span>Levels</span>
+      ${filterPanel("metrics", `<div class="filter" role="group" aria-label="Levels"><span>Levels</span>
         <button type="button" aria-pressed="${!auditUI.levels.length}" data-audit-level="">All levels</button>
         ${LEVELS.map((l) => `<button type="button" class="chip" aria-pressed="${auditUI.levels.includes(l.code)}" data-audit-level="${l.code}">${l.name}</button>`).join("")}</div>
+      <div class="filter" role="group" aria-label="Statements counted"><span>Count</span>
+        ${[["kd", "Know and Do"], ["k", "Know only"], ["d", "Do only"]].map(([v, l]) => `<button type="button" aria-pressed="${auditUI.kinds === v}" data-audit-kinds="${v}">${l}</button>`).join("")}</div>
+      ${yearOpts.length > 1 ? `<div class="filter" role="group" aria-label="Plans counted"><span>Plans</span>
+        <button type="button" aria-pressed="${!auditUI.years.length}" data-audit-year="">All year groups</button>
+        ${yearOpts.map((y) => `<button type="button" class="chip" aria-pressed="${auditUI.years.includes(y)}" data-audit-year="${y}">${y}</button>`).join("")}</div>` : ""}`)}
       ${allPlans.length ? "" : `<p class="none">No plans at ${esc(levelScope)} yet.</p>`}
       <div class="tiles">
         <div class="tile"><span class="tile-n">${allPlans.length}</span><span class="tile-l">plan${allPlans.length === 1 ? "" : "s"}</span></div>
@@ -911,11 +960,6 @@
       </div>
       <h2 class="block-title">Coverage audit</h2>
       <p class="block-intro">How many of the framework's statements at each level are in at least one plan. Select a cell to see which statements are covered, by which plans, and what is still to plan.</p>
-      <div class="filter" role="group" aria-label="Statements counted"><span>Count</span>
-        ${[["kd", "Know and Do"], ["k", "Know only"], ["d", "Do only"]].map(([v, l]) => `<button type="button" aria-pressed="${auditUI.kinds === v}" data-audit-kinds="${v}">${l}</button>`).join("")}</div>
-      ${yearOpts.length > 1 ? `<div class="filter" role="group" aria-label="Plans counted"><span>Plans</span>
-        <button type="button" aria-pressed="${!auditUI.years.length}" data-audit-year="">All year groups</button>
-        ${yearOpts.map((y) => `<button type="button" class="chip" aria-pressed="${auditUI.years.includes(y)}" data-audit-year="${y}">${y}</button>`).join("")}</div>` : ""}
       ${expandable.length ? `<div class="au-tools"><button type="button" class="link-btn" data-audit-all="open">Show all sub-strands</button>
         <button type="button" class="link-btn" data-audit-all="close">Hide all</button></div>` : ""}
       <div data-export-scope><div class="table-tools">${exportBtn("audit", "Export audit to Word", "Coverage audit")}</div>
@@ -1042,9 +1086,10 @@
         title="Still selected, but not at ${LEVEL_NAME[level]} Level. Select to remove it.">${esc(nameOf[key](v))} <small>not at this level</small></button>`).join("")}</div>`;
     };
     return `
-      ${strands.length > 1 ? chips("Strands", "All strands", strands.map((s) => ({ value: s.slug, label: s.name })), planUI.strands, "strands") : ""}
+      ${filterPanel("plan", `${strands.length > 1 ? chips("Strands", "All strands", strands.map((s) => ({ value: s.slug, label: s.name })), planUI.strands, "strands") : ""}
       ${subOptions.length > 1 ? chips("Sub-strands", "All", subOptions, planUI.subs, "subs") : ""}
-      ${cols.length ? `${layoutBar}<div class="ss-wrap" tabindex="0" role="region" aria-label="Statements at ${LEVEL_NAME[level]} Level">
+      ${cols.length ? layoutBar : ""}`)}
+      ${cols.length ? `<div class="ss-wrap" tabindex="0" role="region" aria-label="Statements at ${LEVEL_NAME[level]} Level">
         <table class="ss-table plan-pick layout-${layout} ${lvlClass(level)}" style="--cols:${cols.length}">
           <thead><tr><td class="corner"></td>${cols.map((c) => `<th scope="col">${esc(c.strand.name)}</th>`).join("")}</tr></thead>
           <tbody>
@@ -1483,13 +1528,14 @@
     const widths = ratios && ratios.length === nCols ? ratios.map((r) => Math.round(total * r)) : Array.from({ length: nCols }, (_, i) => (firstIsHead && i === 0 ? first : Math.round((total - (firstIsHead ? first : 0)) / (nCols - (firstIsHead ? 1 : 0)))));
     const border = { style: D.BorderStyle.SINGLE, size: 4, color: "C9CED6" };
     const docRows = rows.map((tr) => {
-      const isHead = tr.parentElement.tagName === "THEAD";
+      const inHead = tr.parentElement.tagName === "THEAD";
+      const isHead = inHead && !tr.classList.contains("r-u");
       let col = 0;
       const cells = [...tr.children].filter((c) => !c.hasAttribute("data-export-skip")).map((c) => {
         const span = Number(c.getAttribute("colspan")) || 1;
         const w = widths.slice(col, col + span).reduce((a, b) => a + b, 0); col += span;
         const colours = lightColours(c);
-        const rowHead = !isHead && c.tagName === "TH";
+        const rowHead = !isHead && c.tagName === "TH" && !(inHead && c.scope === "col");
         let fill = isHead ? colours.fill || "1D2433" : rowHead ? "EEF1F6" : null;
         if (!isHead && tr.classList.contains("r-u")) fill = rowHead ? "EEF1F6" : "F3EDF7";
         const txt = isHead ? (colours.text && colours.fill ? colours.text : "FFFFFF") : undefined;
@@ -1502,7 +1548,7 @@
           children: cellToParagraphs(D, c, isHead || rowHead ? { bold: true, size: isHead ? 18 : 17, color: txt || kdColour } : {}),
         });
       });
-      return new D.TableRow({ children: cells, tableHeader: isHead, cantSplit: false });
+      return new D.TableRow({ children: cells, tableHeader: inHead, cantSplit: false });
     });
     const docTable = new D.Table({
       rows: docRows, width: { size: total, type: D.WidthType.DXA }, columnWidths: widths, layout: D.TableLayoutType.FIXED,
@@ -1701,6 +1747,18 @@
   main.addEventListener("focusin", linkSubs);
 
   main.addEventListener("click", (e) => {
+    const fpt = e.target.closest(".fp-toggle");
+    if (fpt) {
+      const panel = fpt.closest(".filter-panel");
+      const open = fpt.getAttribute("aria-expanded") !== "true";
+      fpt.setAttribute("aria-expanded", String(open));
+      fpt.textContent = open ? "Hide filters" : "Show filters";
+      panel.classList.toggle("collapsed", !open);
+      panel.querySelector(":scope > .fp-body").hidden = !open;
+      try { localStorage.setItem("fp-" + panel.dataset.fp, open ? "open" : "closed"); } catch { /* storage unavailable */ }
+      refreshFilterSummaries();
+      return;
+    }
     const exp = e.target.closest("button[data-export]");
     if (exp) { handleExport(exp); return; }
     if (parseHash().view === "planner" && auditClick(e)) return;
