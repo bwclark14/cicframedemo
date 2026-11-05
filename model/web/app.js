@@ -508,16 +508,22 @@
       <div class="page-head"><h1>${esc(title)}</h1><p>${intro}</p>${inPlay.length === 1 && !HIDDEN_VIEWS.has("progression")
         ? `<p class="page-links"><a href="${progressionHref(area, "k", [inPlay[0].slug])}">See ${esc(inPlay[0].name)} in the progression matrix</a></p>` : ""}</div>
       <div class="picker-bar">
-        <p class="picker-label" id="sub-pick">Sub-strands <span class="hint">Select one or more</span></p>
+        <p class="picker-label" id="sub-pick">Sub-strands by level <span class="hint">Select one or more; a sub-strand is selected at every level it appears</span></p>
         <button type="button" class="link-btn" data-go="${routeFor(ix.subs.map((s) => s.slug))}">Select all</button>
       </div>
-      <ul class="picker" aria-labelledby="sub-pick">${ix.subs.map((s) => {
-        const on = selSlugs.includes(s.slug);
-        const next = on ? selSlugs.filter((x) => x !== s.slug) : ix.subs.map((x) => x.slug).filter((x) => x === s.slug || selSlugs.includes(x));
-        // The last selected sub-strand stays selected: the page always shows at least one
-        const locked = on && selSlugs.length === 1;
-        return `<li><button type="button" class="chip" aria-pressed="${on}" ${locked ? 'aria-disabled="true" title="At least one sub-strand stays selected"' : `data-go="${routeFor(next)}"`}>${esc(s.name)}</button></li>`;
-      }).join("")}</ul>
+      <div class="sub-grid-wrap"><div class="sub-grid" role="group" aria-labelledby="sub-pick" style="--n:${LEVELS.length}">
+        ${LEVELS.map((l) => `<div class="sub-col"><p class="sub-col-head ${lvlClass(l.code)}">${l.name}</p>${
+          ix.subs.filter((s) => s.entries.some((e) => e.node.levels.includes(l.code))).map((s) => {
+            const on = selSlugs.includes(s.slug);
+            const next = on ? selSlugs.filter((x) => x !== s.slug) : ix.subs.map((x) => x.slug).filter((x) => x === s.slug || selSlugs.includes(x));
+            // The last selected sub-strand stays selected: the page always shows at least one
+            const locked = on && selSlugs.length === 1;
+            const lv = LEVELS.filter((x) => s.entries.some((e) => e.node.levels.includes(x.code))).map((x) => x.name);
+            const span = lv.length > 1 ? `${lv[0]} to ${lv[lv.length - 1]} Level` : `${lv[0]} Level`;
+            return `<button type="button" class="chip sub-chip" data-sub="${esc(s.slug)}" aria-pressed="${on}" title="${esc(s.name)}: ${span}"
+              ${locked ? 'aria-disabled="true"' : `data-go="${routeFor(next)}"`}>${esc(s.name)}</button>`;
+          }).join("") || `<p class="none">No sub-strands: strands are taught whole</p>`}</div>`).join("")}
+      </div></div>
       ${strands.length > 1 ? `<div class="filter strand-filter" role="group" aria-label="Strands"><span>Strands</span>
         <button type="button" aria-pressed="${!strandSel.length}" data-go="${routeFor(selSlugs, [])}">All strands</button>
         ${strands.map((s) => {
@@ -733,6 +739,20 @@
   }
 
   // Buttons that navigate (stair, filters)
+  // Sub-strand grid: hovering or focusing a sub-strand highlights it at every level it appears
+  const linkSubs = (e) => {
+    const chip = e.target.closest?.(".sub-chip");
+    const grid = e.target.closest?.(".sub-grid");
+    main.querySelectorAll(".sub-chip.linked").forEach((c) => c.classList.remove("linked"));
+    main.querySelectorAll(".sub-grid.hovering").forEach((g) => g.classList.remove("hovering"));
+    if (chip && grid) {
+      grid.classList.add("hovering");
+      grid.querySelectorAll(`.sub-chip[data-sub="${CSS.escape(chip.dataset.sub)}"]`).forEach((c) => c.classList.add("linked"));
+    }
+  };
+  main.addEventListener("mouseover", linkSubs);
+  main.addEventListener("focusin", linkSubs);
+
   main.addEventListener("click", (e) => {
     // Know/Do layout for one table: redraw just that table and remember the choice
     const lay = e.target.closest("button[data-kd-layout]");

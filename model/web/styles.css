@@ -652,3 +652,17 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
 .ss-table.condensed .kd-col > ul > li::before, .ss-table.condensed .face > ul > li::before { content: "•"; position: absolute; left: 0; color: var(--muted); }
 @media (min-width: 1024px) { .ss-table.condensed.layout-side { min-width: calc(76px + var(--cols) * 320px); } }
 @media print { .kd-layout, .kd-flip { display: none; } .kd-card .face { display: block !important; } }
+
+/* Sub-strand picker as a levels grid --------------------------------------- */
+.sub-grid-wrap { overflow-x: auto; margin: 4px 0 14px; }
+.sub-grid { display: grid; grid-template-columns: repeat(var(--n), minmax(150px, 1fr)); gap: 0;
+  border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); min-width: 640px; }
+.sub-col { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 0 8px 8px; }
+.sub-col + .sub-col { border-left: 1px solid var(--rule); }
+.sub-col-head { align-self: stretch; margin: 0 -8px 4px; padding: 5px 8px; font-size: var(--step--1); font-weight: 700;
+  background: var(--lvl); color: var(--lvl-ink); }
+.sub-col:first-child .sub-col-head { border-top-left-radius: var(--radius); }
+.sub-col:last-child .sub-col-head { border-top-right-radius: var(--radius); }
+.sub-col .none { color: var(--muted); font-style: italic; font-size: var(--step--1); }
+.sub-chip { font-size: var(--step--1); padding: 3px 10px 3px 8px; max-width: 100%; text-align: left; }
+.sub-grid.hovering .sub-chip.linked:not([aria-pressed="true"]) { border-color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, var(--surface)); }
