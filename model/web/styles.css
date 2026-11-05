@@ -514,3 +514,69 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
 .whole-toggle { align-items: center; flex-wrap: wrap; gap: 8px 12px; }
 .whole-toggle .hint { color: var(--muted); font-size: var(--step--1); flex: 1 1 260px; }
 .group-title .hint { font-size: var(--step--1); font-weight: 400; color: var(--muted); margin-left: 8px; }
+
+/* Desktop density: smaller type and tighter spacing so more fits on screen -------- */
+@media (min-width: 1024px) {
+  :root {
+    --step--1: 0.8125rem;   /* 13px */
+    --step-0: 0.9375rem;    /* 15px */
+    --step-1: 1.0625rem;
+    --step-2: 1.25rem;
+    --step-3: 1.5rem;
+    --step-4: 1.875rem;
+  }
+  body { line-height: 1.45; }
+
+  /* header and page heading */
+  .site-inner { padding-top: 8px; max-width: 1440px; }
+  .brand-mark { height: 22px; }
+  nav.primary a { padding: 7px 12px 8px; }
+  main { max-width: 1440px; padding-top: 22px; padding-bottom: 48px; }
+  .site-foot { max-width: 1440px; }
+  body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1840px; }
+  .page-head { margin-bottom: 16px; max-width: 110ch; }
+  .page-head p { font-size: var(--step-0); margin-top: 4px; }
+  .page-links { margin-top: 4px; }
+
+  /* pickers, chips and filters */
+  .picker { gap: 6px; margin-bottom: 14px; }
+  .picker a { padding: 4px 11px; }
+  .chip { padding: 4px 11px 4px 9px; gap: 6px; }
+  .chip::before { width: 12px; height: 12px; }
+  .picker-bar { margin-bottom: 4px; }
+  .picker-label { margin-bottom: 4px; }
+  .filter { margin-bottom: 10px; }
+  .stair { margin-bottom: 16px; }
+  .stair button { padding: 6px 10px; }
+  .stair button:nth-child(1) { --h: 40px; } .stair button:nth-child(2) { --h: 46px; }
+  .stair button:nth-child(3) { --h: 52px; } .stair button:nth-child(4) { --h: 58px; }
+  .stair button:nth-child(5) { --h: 64px; }
+  .jump { margin: -6px 0 16px; }
+
+  /* sections */
+  .strand-section, .level-section { padding-top: 14px; margin-top: 18px; }
+  .section-title { margin-bottom: 8px; }
+  .section-sub { margin-bottom: 10px; }
+  .sub-group + .sub-group { margin-top: 18px; }
+  .group-title { margin-bottom: 8px; padding-bottom: 4px; }
+  .subs { gap: 16px; }
+  .sub-block { padding: 12px 14px 14px; }
+  .understand { padding: 10px 14px; margin-bottom: 12px; }
+  .kd li { padding: 5px 0; }
+
+  /* sub-strand tables */
+  .ss-table { font-size: var(--step--1); line-height: 1.4; min-width: calc(84px + var(--cols) * 200px); }
+  .ss-table .corner, .ss-table tbody th { width: 84px; }
+  .ss-table th, .ss-table td { padding: 7px 10px; }
+  .ss-table thead th { font-size: var(--step--1); padding-top: 8px; padding-bottom: 8px; }
+  .ss-table li { padding: 3px 0; }
+  .ss-u { font-weight: 500; }
+  .ss-note, .ss-shared { margin-top: 4px; font-size: 0.75rem; }
+  .ss-shared { margin-top: 8px; padding-top: 6px; }
+  .ss-table details .extra { margin-top: 6px; }
+
+  /* matrices */
+  .matrix .m-cell, .pm-cell { line-height: 1.35; }
+  .matrix .m-cell { padding: 8px 10px 10px; }
+  .matrix .m-strand { padding: 10px 8px 12px 0; }
+}
