@@ -865,3 +865,13 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
 .au-toggle small { display: block; font-weight: 400; color: var(--muted); font-size: 0.6875rem; }
 .au-toggle:hover { text-decoration: underline; }
 .au-cell button { padding: 3px 6px; }
+.master { margin-top: 22px; border-top: 2px solid var(--ink); padding-top: 6px; }
+.master-h { margin: 0 0 8px; }
+.master-h button { appearance: none; border: 0; background: none; padding: 4px 0 4px 20px; font: inherit; font-size: var(--step-1); font-weight: 700;
+  color: var(--ink); cursor: pointer; position: relative; text-align: left; }
+.master-h button::before { content: "▸"; position: absolute; left: 0; top: 4px; color: var(--muted); transition: transform 120ms ease; }
+.master-h button[aria-expanded="true"]::before { transform: rotate(90deg); }
+.master-h button:hover { text-decoration: underline; }
+.master-h small { font-size: var(--step--1); font-weight: 400; color: var(--muted); margin-left: 8px; }
+.master-body > .filter:first-child { margin-bottom: 10px; }
+.plans-h { margin-top: 6px; }

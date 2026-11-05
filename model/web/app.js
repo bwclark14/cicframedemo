@@ -737,7 +737,8 @@
   }
 
   // ---------------------------------------------------------------- planner: master dashboard and coverage audit
-  const auditUI = { kinds: "kd", years: [], cell: null, open: new Set() };   // open: strands showing their sub-strands      // what the audit counts, which plans, the open cell
+  const auditUI = { kinds: "kd", years: [], levels: [], cell: null, open: new Set() };   // open: strands showing their sub-strands
+  const metricsOpen = () => { try { return localStorage.getItem("planner-metrics") !== "closed"; } catch { return true; } };      // what the audit counts, which plans, the open cell
 
   /** Coverage of every Know/Do statement by the given plans, grouped strand -> row (whole strand / sub-strand) -> level. */
   function coverageModel(ix, plans) {
@@ -750,6 +751,7 @@
     const rows = new Map();                              // strand -> Map(rowKey -> {key, name, cells: {level: {codes, covered, plans}}})
     for (const [code, h] of ix.statements) {
       if (!kinds.includes(h.s.kind)) continue;
+      if (auditUI.levels.length && !auditUI.levels.includes(h.block.level)) continue;
       const key = h.depth > 0 ? h.node.slug : "_whole";
       const name = h.depth > 0 ? h.node.name : "Whole strand";
       if (!rows.has(h.strand)) rows.set(h.strand, new Map());
@@ -774,7 +776,11 @@
     return { strands, total, covered, gaps, coveredBy };
   }
 
-  function masterDashboardHtml(ix, allPlans) {
+  function masterDashboardHtml(ix, everyPlan) {
+    // Level filter: only plans at the chosen levels, and only statements at those levels
+    const allPlans = auditUI.levels.length ? everyPlan.filter((p) => auditUI.levels.includes(p.level)) : everyPlan;
+    const yearOpts = YEAR_GROUPS.filter((y) => allPlans.some((p) => p.yearGroup === y));
+    auditUI.years = auditUI.years.filter((y) => yearOpts.includes(y));
     const plans = auditUI.years.length ? allPlans.filter((p) => auditUI.years.includes(p.yearGroup)) : allPlans;
     const model = coverageModel(ix, plans);
     const pct = (a, b) => (b ? Math.round((100 * a) / b) : 0);
@@ -783,8 +789,12 @@
     const levels = LEVELS.filter((l) => model.strands.some((s) => s.cells[l.code]));
 
     // summary: stat tiles and two count lists
-    const byYear = YEAR_GROUPS.map((y) => [y, allPlans.filter((p) => p.yearGroup === y).length]);
-    const byLevel = LEVELS.map((l) => [l, allPlans.filter((p) => p.level === l.code).length]);
+    // with a level filter, only the year groups that usually work at those levels (plus any that have plans there)
+    let years = auditUI.levels.length
+      ? YEAR_GROUPS.filter((y) => auditUI.levels.includes(YEAR_LEVEL[y]) || allPlans.some((p) => p.yearGroup === y)) : YEAR_GROUPS;
+    if (!years.length) years = YEAR_GROUPS;
+    const byYear = years.map((y) => [y, allPlans.filter((p) => p.yearGroup === y).length]);
+    const byLevel = LEVELS.filter((l) => !auditUI.levels.length || auditUI.levels.includes(l.code)).map((l) => [l, allPlans.filter((p) => p.level === l.code).length]);
     const maxY = Math.max(1, ...byYear.map(([, n]) => n)), maxL = Math.max(1, ...byLevel.map(([, n]) => n));
     const bars = (items, max, label) => `<ul class="count-bars">${items.map(([name, n, cls]) =>
       `<li title="${esc(name)}: ${n} plan${n === 1 ? "" : "s"}"><span class="cb-label">${esc(name)}</span>
@@ -841,12 +851,19 @@
       }
     }
 
-    const yearOpts = YEAR_GROUPS.filter((y) => allPlans.some((p) => p.yearGroup === y));
+    const isOpen = metricsOpen();
+    const levelScope = auditUI.levels.length ? listNames(LEVELS.filter((l) => auditUI.levels.includes(l.code)).map((l) => l.name)) + " Level" : "all levels";
     return `<section class="master" aria-labelledby="master-h">
-      <h2 class="block-title" id="master-h">Overview of all plans</h2>
+      <h2 class="master-h" id="master-h"><button type="button" data-master-toggle aria-expanded="${isOpen}" aria-controls="master-body">
+        Plan metrics and coverage audit <small>${allPlans.length} plan${allPlans.length === 1 ? "" : "s"} · ${esc(levelScope)}</small></button></h2>
+      <div class="master-body" id="master-body"${isOpen ? "" : " hidden"}>
+      <div class="filter" role="group" aria-label="Levels"><span>Levels</span>
+        <button type="button" aria-pressed="${!auditUI.levels.length}" data-audit-level="">All levels</button>
+        ${LEVELS.map((l) => `<button type="button" class="chip" aria-pressed="${auditUI.levels.includes(l.code)}" data-audit-level="${l.code}">${l.name}</button>`).join("")}</div>
+      ${allPlans.length ? "" : `<p class="none">No plans at ${esc(levelScope)} yet.</p>`}
       <div class="tiles">
         <div class="tile"><span class="tile-n">${allPlans.length}</span><span class="tile-l">plan${allPlans.length === 1 ? "" : "s"}</span></div>
-        <div class="tile"><span class="tile-n">${yearsPlanned}<span class="tile-of"> / ${YEAR_GROUPS.length}</span></span><span class="tile-l">year groups with a plan</span></div>
+        <div class="tile"><span class="tile-n">${yearsPlanned}<span class="tile-of"> / ${years.length}</span></span><span class="tile-l">year groups with a plan${auditUI.levels.length ? ` at ${esc(levelScope)}` : ""}</span></div>
         <div class="tile"><span class="tile-n">${pctText(model.covered, model.total)}</span><span class="tile-l">of ${auditUI.kinds === "k" ? "Know" : auditUI.kinds === "d" ? "Do" : "Know and Do"} statements covered<br><small>${model.covered} of ${model.total}${auditUI.years.length ? `, ${auditUI.years.join(", ")} plans` : ""}</small></span></div>
         <div class="tile"><span class="tile-n">${model.gaps}</span><span class="tile-l">sub-strand × level gaps<br><small>no statements planned</small></span></div>
       </div>
@@ -865,6 +882,7 @@
         <button type="button" class="link-btn" data-audit-all="close">Hide all</button></div>` : ""}
       <div class="audit-wrap" tabindex="0" role="region" aria-label="Coverage audit">${matrix}</div>
       ${detail}
+      </div>
     </section>`;
   }
 
@@ -872,8 +890,22 @@
     const t = e.target;
     const cell = t.closest("[data-audit-cell]"), kinds = t.closest("[data-audit-kinds]"), year = t.closest("[data-audit-year]");
     const open = t.closest("[data-audit-open]"), all = t.closest("[data-audit-all]");
-    if (!cell && !kinds && !year && !open && !all && !t.closest("[data-audit-close]")) return false;
-    if (open) { const k = open.dataset.auditOpen; if (auditUI.open.has(k)) auditUI.open.delete(k); else auditUI.open.add(k); }
+    const lvl = t.closest("[data-audit-level]"), toggle = t.closest("[data-master-toggle]");
+    if (toggle) {
+      const now = toggle.getAttribute("aria-expanded") !== "true";
+      toggle.setAttribute("aria-expanded", String(now));
+      main.querySelector("#master-body").hidden = !now;
+      try { localStorage.setItem("planner-metrics", now ? "open" : "closed"); } catch { /* storage unavailable */ }
+      return true;
+    }
+    if (lvl) {
+      const v = lvl.dataset.auditLevel;
+      auditUI.levels = !v ? [] : auditUI.levels.includes(v) ? auditUI.levels.filter((x) => x !== v) : [...auditUI.levels, v];
+      if (auditUI.cell && auditUI.levels.length && !auditUI.levels.includes(auditUI.cell.split("|")[2])) auditUI.cell = null;
+    }
+    if (!lvl && !cell && !kinds && !year && !open && !all && !t.closest("[data-audit-close]")) return false;
+    if (lvl) { /* handled above */ }
+    else if (open) { const k = open.dataset.auditOpen; if (auditUI.open.has(k)) auditUI.open.delete(k); else auditUI.open.add(k); }
     else if (all) auditUI.open = all.dataset.auditAll === "open"
       ? new Set([...main.querySelectorAll("[data-audit-open]")].map((b) => b.dataset.auditOpen)) : new Set();
     else if (cell) auditUI.cell = auditUI.cell === cell.dataset.auditCell ? null : cell.dataset.auditCell;
@@ -921,13 +953,13 @@
         <label class="btn">Import plans<input type="file" accept="application/json,.json" data-plan-import hidden></label>
         <span class="plan-status" role="status"></span>
       </div>
-      ${plans.length ? `<div data-master>${masterDashboardHtml(ix, plans)}</div>
-      <h2 class="block-title plans-h">All plans</h2>
+      ${plans.length ? `<h2 class="block-title plans-h">All plans</h2>
       <div class="plan-table-wrap"><table class="plan-table">
         <thead><tr><th scope="col">Plan</th><th scope="col">Year group</th><th scope="col">Level</th>
           <th scope="col">Strands and sub-strands covered</th><th scope="col" class="num">Know</th><th scope="col" class="num">Do</th>
           <th scope="col">Updated</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
-        <tbody>${rows}</tbody></table></div>`
+        <tbody>${rows}</tbody></table></div>
+      <div data-master>${masterDashboardHtml(ix, plans)}</div>`
         : `<div class="plan-empty"><p>No plans yet for ${esc(ix.doc.name)}.</p><p>Select <strong>New plan</strong> to start one.</p></div>`}`;
     document.title = `Planner · ${ix.doc.name} · Curriculum Explorer`;
   }
