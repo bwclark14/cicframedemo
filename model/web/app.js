@@ -248,7 +248,7 @@
   const listNames = (names) => names.length < 2 ? names.join("")
     : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 
-  function viewSubstrand(ix, slugList, focusLevel, strandFilter, includeWhole) {
+  function viewSubstrand(ix, slugList, focusLevel, strandFilter, includeWhole, params = new URLSearchParams()) {
     const area = state.area;
     if (!ix.subs.length) {
       main.innerHTML = `<div class="page-head"><h1>Sub-strands</h1><p>${esc(ix.doc.name)} has no sub-strands. Browse by strand instead.</p></div>`;
@@ -259,10 +259,17 @@
     let selected = ix.subs.filter((s) => wanted.has(s.slug));
     if (!selected.length) selected = [ix.subs[0]];
     const selSlugs = selected.map((s) => s.slug);
-    const routeFor = (slugs, strand, whole = includeWhole) => {
+    // Display options: which statements to show (Know and Do, Know only, Do only) and a condensed layout
+    const showKD = ["k", "d"].includes(params.get("show")) ? params.get("show") : "kd";
+    const condensed = params.get("view") === "condensed";
+    const routeFor = (slugs, strand, whole = includeWhole, opts = {}) => {
       const q = new URLSearchParams();
+      const show = opts.show ?? showKD;
+      const dense = opts.condensed ?? condensed;
       if (strand) q.set("strand", strand);
       if (whole) q.set("whole", "1");
+      if (show !== "kd") q.set("show", show);
+      if (dense) q.set("view", "condensed");
       const qs = q.toString();
       return href(area, "substrand", slugs.join(",")) + (qs ? "?" + qs : "");
     };
@@ -366,14 +373,14 @@
       };
       const row = (cls, name, fn) => `<tr class="${cls}"><th scope="row">${name}</th>${cols.map((c) => `<td>${fn(c)}</td>`).join("")}</tr>`;
       return `<div class="ss-wrap" tabindex="0" role="region" aria-label="${esc(label)} at ${l.name} Level">
-        <table class="ss-table ${lvlClass(l.code)}" style="--cols:${cols.length}">
+        <table class="ss-table ${lvlClass(l.code)}${condensed ? " condensed" : ""}" style="--cols:${cols.length}">
           <thead><tr><td class="corner"></td>${cols.map((c) =>
             `<th scope="col"><a href="${href(area, "strand", c.strand.slug, l.code)}">${esc(c.strand.name)}</a></th>`).join("")}</tr></thead>
           <tbody>
             ${row("r-u", "Understand", (c) => c.und.map((u) => `<p class="ss-u${c.inherited ? " inherited" : ""}">${esc(u)}</p>`).join("")
               + (c.inherited ? `<p class="ss-note">Shared across the strand</p>` : ""))}
-            ${row("r-k", "Know", (c) => cell(c, "know"))}
-            ${row("r-d", "Do", (c) => cell(c, "do"))}
+            ${showKD !== "d" ? row("r-k", "Know", (c) => cell(c, "know")) : ""}
+            ${showKD !== "k" ? row("r-d", "Do", (c) => cell(c, "do")) : ""}
             ${hasExtras ? row("r-n", "Notes", extrasCell) : ""}
           </tbody>
         </table></div>`;
@@ -432,6 +439,13 @@
       <div class="filter whole-toggle" role="group" aria-label="Statements without a sub-strand">
         <button type="button" class="chip" aria-pressed="${!!includeWhole}" data-go="${routeFor(selSlugs, strandFilter, !includeWhole)}">Include statements without a sub-strand</button>
         <span class="hint">Shows one table per level with everything ${inPlay.length === 1 ? esc(inPlay[0].name) : "these strands"} contain${inPlay.length === 1 ? "s" : ""} there, labelled by origin, including levels before the sub-strand starts</span>
+      </div>
+      <div class="filter display-bar" role="group" aria-label="Display options">
+        <span>Statements</span>
+        ${[["kd", "Know and Do"], ["k", "Know only"], ["d", "Do only"]].map(([v, name]) =>
+          `<button type="button" aria-pressed="${showKD === v}" data-go="${routeFor(selSlugs, strandFilter, includeWhole, { show: v })}">${name}</button>`).join("")}
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" class="chip" aria-pressed="${condensed}" data-go="${routeFor(selSlugs, strandFilter, includeWhole, { condensed: !condensed })}">Condensed view</button>
       </div>
       ${sections || `<p class="empty">Nothing to show for this selection.</p>`}`;
     document.title = `${title} · ${ix.doc.name} · Curriculum Explorer`;
@@ -627,7 +641,7 @@
     if (!r.b) window.scrollTo(0, 0);   // a 4th segment (strand or level) scrolls to that section instead
     if (r.view === "level") viewLevel(ix, r.a || "early", r.b);
     else if (r.view === "strand") viewStrand(ix, r.a, r.b);
-    else if (r.view === "substrand") viewSubstrand(ix, r.a, r.b, r.params.get("strand"), r.params.get("whole") === "1");
+    else if (r.view === "substrand") viewSubstrand(ix, r.a, r.b, r.params.get("strand"), r.params.get("whole") === "1", r.params);
     else if (r.view === "matrix") viewMatrix(ix);
     else if (r.view === "progression") viewProgression(ix, r.params);
     else viewOverview(ix);

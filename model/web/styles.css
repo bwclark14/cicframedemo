@@ -588,3 +588,24 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
 .ss-tag.sub { border-color: var(--ink); color: var(--ink); }
 .ss-tag.whole { border-style: dashed; }
 .ss-tag-inline { font-weight: 400; color: var(--muted); }
+
+/* Display bar: Know / Do filter and condensed view */
+.display-bar .sep { width: 1px; height: 22px; background: var(--rule-strong); margin: 0 6px; }
+.display-bar .chip { font-size: var(--step--1); padding-top: 4px; padding-bottom: 4px; }
+
+/* Condensed tables: smaller text, compact bullets, slim Understand row */
+.ss-table.condensed { font-size: 0.75rem; line-height: 1.3; min-width: calc(76px + var(--cols) * 170px); }
+.ss-table.condensed .corner, .ss-table.condensed tbody th { width: 76px; }
+.ss-table.condensed th, .ss-table.condensed td { padding: 4px 8px; }
+.ss-table.condensed thead th { font-size: 0.75rem; padding-top: 5px; padding-bottom: 5px; }
+.ss-table.condensed tbody th { font-size: 0.6875rem; }
+.ss-table.condensed > tbody > tr > td > ul > li { padding: 1px 0 1px 0.9em; border: 0; position: relative; }
+.ss-table.condensed > tbody > tr > td > ul > li::before { content: "•"; position: absolute; left: 0; color: var(--muted); }
+.ss-table.condensed .r-u td { font-size: 0.6875rem; color: var(--muted); }
+.ss-table.condensed .ss-u { font-weight: 400; color: var(--ink); }
+.ss-table.condensed .ss-u + .ss-u { margin-top: 3px; }
+.ss-table.condensed .ss-note { display: none; }
+.ss-table.condensed .ss-tag { margin: 5px 0 1px; padding: 0 6px; font-size: 0.6875rem; }
+.ss-table.condensed .ss-tag:first-child { margin-top: 0; }
+.ss-table.condensed .ss-shared { margin-top: 4px; padding-top: 3px; font-size: 0.6875rem; }
+.ss-table.condensed .none { font-size: 0.6875rem; }
