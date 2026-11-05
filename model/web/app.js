@@ -22,6 +22,8 @@
     { code: "fourth", name: "Fourth" },
   ];
   const LEVEL_NAME = Object.fromEntries(LEVELS.map((l) => [l.code, l.name]));
+  // Views kept in the code but hidden from users; their URLs redirect to the overview
+  const HIDDEN_VIEWS = new Set(["progression"]);
   const EXTRA_LABEL = { includes: "Includes, but not limited to", excludes: "Excludes", note: "Notes" };
 
   const main = document.getElementById("main");
@@ -229,7 +231,7 @@
     main.innerHTML = `
       <div class="page-head"><h1>${esc(strand.name)}</h1>
         <p>${levelRange(strand.levels)}. How understanding in this strand builds from level to level.</p>
-        <p class="page-links"><a href="${progressionHref(area, "k", [strand.slug])}">See ${esc(strand.name)} in the progression matrix</a></p></div>
+        ${HIDDEN_VIEWS.has("progression") ? "" : `<p class="page-links"><a href="${progressionHref(area, "k", [strand.slug])}">See ${esc(strand.name)} in the progression matrix</a></p>`}</div>
       <p class="picker-label" id="strand-pick">Strands</p>
       <ul class="picker" aria-labelledby="strand-pick">${ix.doc.strands.map((s) =>
         `<li><a href="${href(area, "strand", s.slug)}" aria-current="${s === strand}">${esc(s.name)}</a></li>`).join("")}</ul>
@@ -368,7 +370,7 @@
     }
 
     main.innerHTML = `
-      <div class="page-head"><h1>${esc(title)}</h1><p>${intro}</p>${inPlay.length === 1
+      <div class="page-head"><h1>${esc(title)}</h1><p>${intro}</p>${inPlay.length === 1 && !HIDDEN_VIEWS.has("progression")
         ? `<p class="page-links"><a href="${progressionHref(area, "k", [inPlay[0].slug])}">See ${esc(inPlay[0].name)} in the progression matrix</a></p>` : ""}</div>
       <div class="picker-bar">
         <p class="picker-label" id="sub-pick">Sub-strands <span class="hint">Select one or more</span></p>
@@ -574,6 +576,7 @@
     const r = parseHash();
     const areaSlug = state.manifest.some((m) => m.slug === r.area) ? r.area : state.manifest[0].slug;
     if (areaSlug !== r.area) { location.replace(href(areaSlug, "overview")); return; }
+    if (HIDDEN_VIEWS.has(r.view)) { location.replace(href(areaSlug, "overview")); return; }
     state.area = areaSlug;
     const ix = await loadArea(areaSlug);
 
