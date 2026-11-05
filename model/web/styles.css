@@ -609,3 +609,9 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
 .ss-table.condensed .ss-tag:first-child { margin-top: 0; }
 .ss-table.condensed .ss-shared { margin-top: 4px; padding-top: 3px; font-size: 0.6875rem; }
 .ss-table.condensed .none { font-size: 0.6875rem; }
+
+/* By level / By strand tables */
+.ss-table.by-levels thead .corner { background: var(--surface); }
+.ss-table thead th[class*="lvl-"] { background: var(--lvl); color: var(--lvl-ink); }
+.ss-table .th-sub { display: block; font-weight: 400; font-size: 0.75rem; opacity: 0.85; margin-top: 2px; }
+.multi-filter { row-gap: 6px; }

@@ -197,53 +197,175 @@
     document.title = `${d.name}: purpose and big ideas · Curriculum Explorer`;
   }
 
-  function viewLevel(ix, level, focusStrand) {
-    level = LEVEL_NAME[level] ? level : "early";
-    const area = state.area;
-    const strands = ix.doc.strands.filter((s) => s.levels.includes(level));
-    main.innerHTML = `
-      <div class="page-head"><h1>${LEVEL_NAME[level]} Level</h1>
-        <p>Everything learners know, do and understand in ${esc(ix.doc.name)} at ${LEVEL_NAME[level]} Level, strand by strand.</p></div>
-      ${stairHtml(level, ix, (c) => href(area, "level", c))}
-      <ul class="jump" aria-label="Strands at this level">${strands.map((s) => `<li><a href="${href(area, "level", level, s.slug)}">${esc(s.name)}</a></li>`).join("")}</ul>
-      ${strands.map((s) => `
-        <section class="strand-section ${lvlClass(level)}" id="s-${esc(s.slug)}">
-          <h2 class="section-title">${levelMark(level)}<a href="${href(area, "strand", s.slug, level)}" style="text-decoration:none">${esc(s.name)}</a></h2>
-          <p class="section-sub">${(s.children || []).some((c) => c.levels.includes(level))
-            ? "Organised into sub-strands at this level." : "Taught as one strand at this level."}</p>
-          ${strandAtLevel(ix, s, level)}
-        </section>`).join("")}`;
-    document.title = `${LEVEL_NAME[level]} Level · ${ix.doc.name} · Curriculum Explorer`;
-    if (focusStrand) scrollToId("s-" + focusStrand);
+  // ---------------------------------------------------------------- shared Know/Do table
+  // Used by By level (strands as columns), By strand (levels as columns) and By sub-strand.
+  // A column: { head (html), headClass, groups: [{label, origin, sts}], und: [{text, label}], undNote }
+  const EXTRA_KINDS = ["includes", "excludes", "note"];
+  function displayOptions(params) {
+    return {
+      showKD: ["k", "d"].includes(params.get("show")) ? params.get("show") : "kd",
+      condensed: params.get("view") === "condensed",
+    };
+  }
+  /** Build a route with a query from {key: value | array}; empty values are left out. */
+  function withQuery(path, q) {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(q)) {
+      const val = Array.isArray(v) ? v.join(",") : v;
+      if (val !== undefined && val !== null && val !== "" && val !== false) p.set(k, val === true ? "1" : val);
+    }
+    const qs = p.toString();
+    return path + (qs ? "?" + qs : "");
+  }
+  /** Query values for the display options, ready to spread into withQuery. */
+  const displayQuery = (o) => ({ show: o.showKD === "kd" ? "" : o.showKD, view: o.condensed ? "condensed" : "" });
+  function displayBarHtml(o, routeWith) {
+    return `<div class="filter display-bar" role="group" aria-label="Display options">
+      <span>Statements</span>
+      ${[["kd", "Know and Do"], ["k", "Know only"], ["d", "Do only"]].map(([v, label]) =>
+        `<button type="button" aria-pressed="${o.showKD === v}" data-go="${routeWith({ ...o, showKD: v })}">${label}</button>`).join("")}
+      <span class="sep" aria-hidden="true"></span>
+      <button type="button" class="chip" aria-pressed="${o.condensed}" data-go="${routeWith({ ...o, condensed: !o.condensed })}">Condensed view</button>
+    </div>`;
+  }
+  /** Multi-select chips with an "All" button; selection [] means all. */
+  function multiChipsHtml(label, allLabel, options, sel, routeFor) {
+    return `<div class="filter multi-filter" role="group" aria-label="${esc(label)}"><span>${esc(label)}</span>
+      <button type="button" aria-pressed="${!sel.length}" data-go="${routeFor([])}">${esc(allLabel)}</button>
+      ${options.map((o) => {
+        const on = sel.includes(o.value);
+        const next = on ? sel.filter((x) => x !== o.value) : options.map((x) => x.value).filter((x) => x === o.value || sel.includes(x));
+        return `<button type="button" class="chip" aria-pressed="${on}" data-go="${routeFor(next)}">${esc(o.label)}</button>`;
+      }).join("")}
+    </div>`;
+  }
+  function kdTable(cols, o, opts = {}) {
+    const listHtml = (sts) => sts.length
+      ? `<ul>${sts.map((x) => `<li title="${esc(x.code)}">${inlineMd(x.body)}</li>`).join("")}</ul>` : "";
+    const labels = new Set(cols.flatMap((c) => c.groups.filter((g) => g.sts.length).map((g) => g.label)));
+    const showTags = labels.size > 1;
+    const cell = (c, k) => c.groups.map((g) => {
+      const list = listHtml(g.sts.filter((x) => x.kind === k));
+      return list ? (showTags ? `<p class="ss-tag ${g.origin}">${esc(g.label)}</p>` : "") + list : "";
+    }).join("") || `<p class="none">None at this level.</p>`;
+    const allExtras = (c) => c.groups.flatMap((g) => g.sts.filter((x) => EXTRA_KINDS.includes(x.kind)).map((x) => ({ x, g })));
+    const hasExtras = cols.some((c) => allExtras(c).length);
+    const extrasCell = (c) => {
+      const all = allExtras(c);
+      return all.length
+        ? `<details><summary>${all.length} note${all.length === 1 ? "" : "s"}</summary>${all.map(({ x, g }) =>
+            `<div class="extra ${x.kind}" title="${esc(x.code)}"><h5>${EXTRA_LABEL[x.kind]}${showTags ? ` <span class="ss-tag-inline">· ${esc(g.label)}</span>` : ""}</h5>${md(x.body)}</div>`).join("")}</details>`
+        : `<p class="none">None.</p>`;
+    };
+    const undCell = (c) => {
+      const tag = c.und.length > 1 || c.und.some((u) => u.label && u.label !== c.und[0].label);
+      return c.und.map((u) => `${tag && u.label ? `<p class="ss-tag">${esc(u.label)}</p>` : ""}<p class="ss-u${c.undNote ? " inherited" : ""}">${esc(u.text)}</p>`).join("")
+        + (c.undNote ? `<p class="ss-note">${esc(c.undNote)}</p>` : "")
+        || `<p class="none">No Understanding stated.</p>`;
+    };
+    const row = (cls, name, fn) => `<tr class="${cls}"><th scope="row">${name}</th>${cols.map((c) => `<td>${fn(c)}</td>`).join("")}</tr>`;
+    return `<div class="ss-wrap" tabindex="0" role="region" aria-label="${esc(opts.label || "Know and Do table")}">
+      <table class="ss-table ${opts.tableClass || ""}${o.condensed ? " condensed" : ""}" style="--cols:${cols.length}">
+        <thead><tr><td class="corner"></td>${cols.map((c) => `<th scope="col" class="${c.headClass || ""}"${c.id ? ` id="${c.id}"` : ""}>${c.head}</th>`).join("")}</tr></thead>
+        <tbody>
+          ${row("r-u", "Understand", undCell)}
+          ${o.showKD !== "d" ? row("r-k", "Know", (c) => cell(c, "know")) : ""}
+          ${o.showKD !== "k" ? row("r-d", "Do", (c) => cell(c, "do")) : ""}
+          ${hasExtras ? row("r-n", "Notes", extrasCell) : ""}
+        </tbody>
+      </table></div>`;
+  }
+  /**
+   * Everything one strand holds at one level, as labelled groups: the statements written for the whole strand,
+   * then each sub-strand (and sub-sub-strand) in framework order. `subFilter` limits which groups are kept:
+   * "_whole" for the whole strand, or sub-strand slugs; empty keeps all.
+   */
+  function strandColumn(ix, strand, levelCode, subFilter = []) {
+    const keep = (key) => !subFilter.length || subFilter.includes(key);
+    const groups = [], und = [];
+    const take = (node, label) => {
+      const blocks = (node.blocks || []).filter((b) => b.level === levelCode);
+      for (const b of blocks) {
+        const text = b.understanding;
+        if (text && !und.some((u) => u.text === text)) und.push({ text, label });
+      }
+      return blocks.flatMap((b) => b.statements || []);
+    };
+    const whole = take(strand, "Whole strand");
+    if (whole.length && keep("_whole")) groups.push({ label: "Whole strand", origin: "whole", sts: whole });
+    for (const n of ix.nodes) {
+      if (n.strand !== strand || n.depth === 0 || !n.node.levels.includes(levelCode)) continue;
+      const label = n.depth > 1 && n.parent ? `${n.parent.name} › ${n.node.name}` : n.node.name;
+      const sts = take(n.node, label);
+      if (keep(n.node.slug)) groups.push({ label, origin: "sub", sts });
+    }
+    return { groups, und };
   }
 
-  function viewStrand(ix, slug, focusLevel) {
+  function viewLevel(ix, level, focusStrand, params = new URLSearchParams()) {
+    level = LEVEL_NAME[level] ? level : LEVELS[0].code;
     const area = state.area;
+    const o = displayOptions(params);
+    const strands = ix.doc.strands.filter((s) => s.levels.includes(level));
+    const asked = params.has("strand") ? String(params.get("strand")).split(",") : focusStrand ? [focusStrand] : [];
+    const sel = asked.filter((x) => strands.some((s) => s.slug === x));
+    const inPlay = sel.length ? strands.filter((s) => sel.includes(s.slug)) : strands;
+    const routeWith = ({ lvl = level, strandSel = sel, ...d } = {}) =>
+      withQuery(href(area, "level", lvl), { strand: strandSel, ...displayQuery({ ...o, ...d }) });
+
+    const cols = inPlay.map((s) => {
+      const { groups, und } = strandColumn(ix, s, level);
+      const hasSubs = groups.some((g) => g.origin === "sub");
+      return { head: `<a href="${href(area, "strand", s.slug)}">${esc(s.name)}</a>${hasSubs ? `<small class="th-sub">${groups.filter((g) => g.origin === "sub").length} sub-strands</small>` : ""}`,
+        groups, und };
+    });
+    main.innerHTML = `
+      <div class="page-head"><h1>${LEVEL_NAME[level]} Level</h1>
+        <p>Everything learners know, do and understand in ${esc(ix.doc.name)} at ${LEVEL_NAME[level]} Level: one column per strand, with any sub-strands labelled inside it.</p></div>
+      ${stairHtml(level, ix, (c) => routeWith({ lvl: c, strandSel: [] }))}
+      ${strands.length > 1 ? multiChipsHtml("Strands", "All strands", strands.map((s) => ({ value: s.slug, label: s.name })), sel,
+        (next) => routeWith({ strandSel: next })) : ""}
+      ${displayBarHtml(o, (d) => routeWith(d))}
+      <section class="level-section ${lvlClass(level)}">
+        ${cols.length ? kdTable(cols, o, { tableClass: lvlClass(level), label: `${LEVEL_NAME[level]} Level` }) : `<p class="empty">No strands at this level.</p>`}
+      </section>`;
+    document.title = `${LEVEL_NAME[level]} Level · ${ix.doc.name} · Curriculum Explorer`;
+  }
+
+  function viewStrand(ix, slug, focusLevel, params = new URLSearchParams()) {
+    const area = state.area;
+    const o = displayOptions(params);
     const strand = strandBySlug(ix, slug) || ix.doc.strands[0];
-    const ladder = LEVELS.map((l) => {
-      const anchors = (strand.blocks || []).filter((b) => b.level === l.code && b.understanding);
-      const present = strand.levels.includes(l.code);
-      return `<li class="${lvlClass(l.code)}${present ? "" : " absent"}">
-        ${present ? `<a class="rung" href="${href(area, "strand", strand.slug, l.code)}">${l.name}</a>` : `<span class="rung">${l.name}</span>`}
-        <div class="rung-text">${present ? anchors.map((a) => esc(a.understanding)).join("<br>") || "See sub-strands below." : "Not part of this level."}</div>
-      </li>`;
-    }).join("");
+    // Sub-strand filter: the strand's own statements ("Whole strand") and each sub-strand; empty means all
+    const subOptions = [{ value: "_whole", label: "Whole strand" },
+      ...ix.nodes.filter((n) => n.strand === strand && n.depth > 0)
+        .filter((n, i, arr) => arr.findIndex((m) => m.node.slug === n.node.slug) === i)
+        .map((n) => ({ value: n.node.slug, label: n.node.name }))];
+    const sel = String(params.get("sub") || "").split(",").filter((x) => subOptions.some((s) => s.value === x));
+    const routeWith = ({ s = strand.slug, subSel = sel, ...d } = {}) =>
+      withQuery(href(area, "strand", s), { sub: subSel, ...displayQuery({ ...o, ...d }) });
+
+    const levels = LEVELS.filter((l) => strand.levels.includes(l.code));
+    const cols = levels.map((l) => {
+      const { groups, und } = strandColumn(ix, strand, l.code, sel);
+      return { head: `<a href="${href(area, "level", l.code, strand.slug)}">${l.name} Level</a>`, headClass: lvlClass(l.code), id: `col-${l.code}`, groups, und };
+    }).filter((c) => !sel.length || c.groups.length);      // a filter hides levels where none of it appears
     main.innerHTML = `
       <div class="page-head"><h1>${esc(strand.name)}</h1>
-        <p>${levelRange(strand.levels)}. How understanding in this strand builds from level to level.</p>
-        ${HIDDEN_VIEWS.has("progression") ? "" : `<p class="page-links"><a href="${progressionHref(area, "k", [strand.slug])}">See ${esc(strand.name)} in the progression matrix</a></p>`}</div>
+        <p>${levelRange(strand.levels)}. Read across to see how the strand develops from level to level; sub-strands are labelled inside each column.</p></div>
       <p class="picker-label" id="strand-pick">Strands</p>
       <ul class="picker" aria-labelledby="strand-pick">${ix.doc.strands.map((s) =>
-        `<li><a href="${href(area, "strand", s.slug)}" aria-current="${s === strand}">${esc(s.name)}</a></li>`).join("")}</ul>
-      <h2 class="block-title">Understanding at each level</h2>
-      <ol class="ladder">${ladder}</ol>
-      ${LEVELS.filter((l) => strand.levels.includes(l.code)).map((l) => `
-        <section class="level-section ${lvlClass(l.code)}" id="l-${l.code}">
-          <h2 class="section-title">${levelMark(l.code)}${l.name} Level</h2>
-          ${strandAtLevel(ix, strand, l.code)}
-        </section>`).join("")}`;
+        `<li><a href="${routeWith({ s: s.slug, subSel: [] })}" aria-current="${s === strand}">${esc(s.name)}</a></li>`).join("")}</ul>
+      ${subOptions.length > 1 ? multiChipsHtml("Show", "Everything", subOptions, sel, (next) => routeWith({ subSel: next })) : ""}
+      ${displayBarHtml(o, (d) => routeWith(d))}
+      <section class="level-section">
+        ${cols.length ? kdTable(cols, o, { tableClass: "by-levels", label: `${strand.name} by level` }) : `<p class="empty">Nothing in this strand matches the selection.</p>`}
+      </section>`;
     document.title = `${strand.name} · ${ix.doc.name} · Curriculum Explorer`;
-    if (focusLevel) scrollToId("l-" + focusLevel);
+    if (focusLevel) {
+      const th = document.getElementById("col-" + focusLevel);
+      if (th) requestAnimationFrame(() => th.scrollIntoView({ inline: "start", block: "nearest" }));
+    }
   }
 
   /** Join names as "A", "A and B", "A, B and C". */
@@ -311,41 +433,11 @@
     }).filter(Boolean);
     const levels = LEVELS.map((l) => ({ l, cols: colsAt(l) })).filter((x) => x.cols.length);
 
-    const items = (sts, k) => sts.filter((x) => x.kind === k);
-    const listHtml = (sts) => sts.length
-      ? `<ul>${sts.map((x) => `<li title="${esc(x.code)}">${inlineMd(x.body)}</li>`).join("")}</ul>` : "";
-    const extraKinds = ["includes", "excludes", "note"];
-    const tableHtml = (cols, l) => {
-      // label groups by origin whenever the table mixes them (several sub-strands, or whole-strand statements)
-      const labels = new Set(cols.flatMap((c) => c.groups.filter((g) => g.sts.length).map((g) => g.label)));
-      const showTags = labels.size > 1;
-      const cell = (c, k) => c.groups.map((g) => {
-        const list = listHtml(items(g.sts, k));
-        return list ? (showTags ? `<p class="ss-tag ${g.origin}">${esc(g.label)}</p>` : "") + list : "";
-      }).join("") || `<p class="none">None at this level.</p>`;
-      const allExtras = (c) => c.groups.flatMap((g) => g.sts.filter((x) => extraKinds.includes(x.kind)).map((x) => ({ x, g })));
-      const hasExtras = cols.some((c) => allExtras(c).length);
-      const extrasCell = (c) => {
-        const all = allExtras(c);
-        return all.length
-          ? `<details><summary>${all.length} note${all.length === 1 ? "" : "s"}</summary>${all.map(({ x, g }) =>
-              `<div class="extra ${x.kind}" title="${esc(x.code)}"><h5>${EXTRA_LABEL[x.kind]}${showTags ? ` <span class="ss-tag-inline">· ${esc(g.label)}</span>` : ""}</h5>${md(x.body)}</div>`).join("")}</details>`
-          : `<p class="none">None.</p>`;
-      };
-      const row = (cls, name, fn) => `<tr class="${cls}"><th scope="row">${name}</th>${cols.map((c) => `<td>${fn(c)}</td>`).join("")}</tr>`;
-      return `<div class="ss-wrap" tabindex="0" role="region" aria-label="${l.name} Level">
-        <table class="ss-table ${lvlClass(l.code)}${condensed ? " condensed" : ""}" style="--cols:${cols.length}">
-          <thead><tr><td class="corner"></td>${cols.map((c) =>
-            `<th scope="col"><a href="${href(area, "strand", c.strand.slug, l.code)}">${esc(c.strand.name)}</a></th>`).join("")}</tr></thead>
-          <tbody>
-            ${row("r-u", "Understand", (c) => c.und.map((u) => `<p class="ss-u${c.inherited ? " inherited" : ""}">${esc(u)}</p>`).join("")
-              + (c.inherited ? `<p class="ss-note">Shared across the strand</p>` : ""))}
-            ${showKD !== "d" ? row("r-k", "Know", (c) => cell(c, "know")) : ""}
-            ${showKD !== "k" ? row("r-d", "Do", (c) => cell(c, "do")) : ""}
-            ${hasExtras ? row("r-n", "Notes", extrasCell) : ""}
-          </tbody>
-        </table></div>`;
-    };
+    const o = { showKD, condensed };
+    const tableHtml = (cols, l) => kdTable(cols.map((c) => ({
+      head: `<a href="${href(area, "strand", c.strand.slug, l.code)}">${esc(c.strand.name)}</a>`,
+      groups: c.groups, und: c.und.map((text) => ({ text })), undNote: c.inherited ? "Shared across the strand" : "",
+    })), o, { tableClass: lvlClass(l.code), label: `${l.name} Level` });
 
     const names = selected.map((s) => s.name);
     const sections = levels.map(({ l, cols }) => {
@@ -395,13 +487,7 @@
         <button type="button" class="chip" aria-pressed="${!!includeWhole}" data-go="${routeFor(selSlugs, strandSel, !includeWhole)}">Include statements without a sub-strand</button>
         <span class="hint">Adds statements written for the whole strand, including levels before the sub-strand starts</span>
       </div>
-      <div class="filter display-bar" role="group" aria-label="Display options">
-        <span>Statements</span>
-        ${[["kd", "Know and Do"], ["k", "Know only"], ["d", "Do only"]].map(([v, label]) =>
-          `<button type="button" aria-pressed="${showKD === v}" data-go="${routeFor(selSlugs, strandSel, includeWhole, { show: v })}">${label}</button>`).join("")}
-        <span class="sep" aria-hidden="true"></span>
-        <button type="button" class="chip" aria-pressed="${condensed}" data-go="${routeFor(selSlugs, strandSel, includeWhole, { condensed: !condensed })}">Condensed view</button>
-      </div>
+      ${displayBarHtml(o, (d) => routeFor(selSlugs, strandSel, includeWhole, { show: d.showKD, condensed: d.condensed }))}
       ${sections || `<p class="empty">Nothing to show for this selection.${includeWhole ? "" : " Try including statements without a sub-strand."}</p>`}`;
     document.title = `${title} · ${ix.doc.name} · Curriculum Explorer`;
     if (focusLevel) scrollToId("l-" + focusLevel);
@@ -592,10 +678,10 @@
       if (v === r.view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
 
-    document.body.classList.toggle("wide", r.view === "progression" || r.view === "matrix" || r.view === "substrand");
+    document.body.classList.toggle("wide", ["progression", "matrix", "substrand", "level", "strand"].includes(r.view));
     if (!r.b) window.scrollTo(0, 0);   // a 4th segment (strand or level) scrolls to that section instead
-    if (r.view === "level") viewLevel(ix, r.a || "early", r.b);
-    else if (r.view === "strand") viewStrand(ix, r.a, r.b);
+    if (r.view === "level") viewLevel(ix, r.a || LEVELS[0].code, r.b, r.params);
+    else if (r.view === "strand") viewStrand(ix, r.a, r.b, r.params);
     else if (r.view === "substrand") viewSubstrand(ix, r.a, r.b, r.params.get("strand"), r.params.get("whole") === "1", r.params);
     else if (r.view === "matrix") viewMatrix(ix);
     else if (r.view === "progression") viewProgression(ix, r.params);
