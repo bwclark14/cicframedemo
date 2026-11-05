@@ -1640,7 +1640,7 @@
       if (v === r.view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
 
-    document.body.classList.toggle("wide", ["progression", "matrix", "substrand", "level", "strand", "planner"].includes(r.view));
+    document.body.classList.toggle("wide", ["overview", "progression", "matrix", "substrand", "level", "strand", "planner"].includes(r.view));
     if (!r.b) window.scrollTo(0, 0);   // a 4th segment (strand or level) scrolls to that section instead
     if (r.view === "level") viewLevel(ix, r.a || LEVELS[0].code, r.b, r.params);
     else if (r.view === "strand") viewStrand(ix, r.a, r.b, r.params);
