@@ -176,7 +176,7 @@
         <a class="strand-name" href="${href(area, "level", l.code, s.slug)}">${esc(s.name)}</a>
         ${subs.length
           ? `<ul class="tree">${subs.map((c) => `<li><a href="${href(area, "substrand", c.slug, l.code) + "?strand=" + encodeURIComponent(s.slug)}">${esc(c.name)}</a></li>`).join("")}</ul>`
-          : `<span class="whole">Taught as one strand</span>`}
+          : `<span class="whole">Across the curriculum area</span>`}
       </div>`;
     }).join("")).join("");
 
@@ -598,7 +598,7 @@
             const span = lv.length > 1 ? `${lv[0]} to ${lv[lv.length - 1]} Level` : `${lv[0]} Level`;
             return `<button type="button" class="chip sub-chip" data-sub="${esc(s.slug)}" aria-pressed="${on}" title="${esc(s.name)}: ${span}"
               ${locked ? 'aria-disabled="true"' : `data-go="${routeFor(next)}"`}>${esc(s.name)}</button>`;
-          }).join("") || `<p class="none">No sub-strands: strands are taught whole</p>`}</div>`).join("")}
+          }).join("") || `<p class="none">No sub-strands: across the curriculum area</p>`}</div>`).join("")}
       </div></div>
       ${strands.length > 1 ? `<div class="filter strand-filter" role="group" aria-label="Strands"><span>Strands</span>
         <button type="button" aria-pressed="${!strandSel.length}" data-go="${routeFor(selSlugs, [])}">All strands</button>
@@ -718,7 +718,7 @@
       const head = kids.length
         ? `<button type="button" class="pm-toggle" aria-expanded="${isOpen}" data-strand="${esc(st.slug)}">
              <span class="pm-name">${esc(st.name)}</span><span class="pm-count">${kids.length} sub-strands</span></button>`
-        : `<span class="pm-plain"><span class="pm-name">${esc(st.name)}</span><span class="pm-count">Taught as one strand</span></span>`;
+        : `<span class="pm-plain"><span class="pm-name">${esc(st.name)}</span><span class="pm-count">Across the curriculum area</span></span>`;
       const strandRow = `<tr class="pm-strand"><th scope="row" class="pm-rowhead">${head}</th>${LEVELS.map((l) => td(l, strandCell(st, l))).join("")}</tr>`;
       const subRows = kids.map((c) => `<tr class="pm-subrow" data-parent="${esc(st.slug)}"${isOpen ? "" : " hidden"}>
         <th scope="row" class="pm-rowhead pm-sub"><a href="${href(area, "substrand", c.slug)}?strand=${encodeURIComponent(st.slug)}">${esc(c.name)}</a></th>
