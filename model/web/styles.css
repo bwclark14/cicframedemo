@@ -580,3 +580,11 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
   .matrix .m-cell { padding: 8px 10px 10px; }
   .matrix .m-strand { padding: 10px 8px 12px 0; }
 }
+
+/* origin labels inside merged sub-strand tables */
+.ss-tag { display: inline-block; margin: 10px 0 4px; padding: 1px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+  line-height: 1.5; border: 1px solid var(--rule-strong); color: var(--muted); background: var(--surface); }
+.ss-tag:first-child { margin-top: 0; }
+.ss-tag.sub { border-color: var(--ink); color: var(--ink); }
+.ss-tag.whole { border-style: dashed; }
+.ss-tag-inline { font-weight: 400; color: var(--muted); }
