@@ -248,25 +248,32 @@
   const listNames = (names) => names.length < 2 ? names.join("")
     : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 
-  function viewSubstrand(ix, slugList, focusLevel, strandFilter, includeWhole, params = new URLSearchParams()) {
+  function viewSubstrand(ix, slugList, focusLevel, strandParam, includeWhole, params = new URLSearchParams()) {
     const area = state.area;
     if (!ix.subs.length) {
       main.innerHTML = `<div class="page-head"><h1>Sub-strands</h1><p>${esc(ix.doc.name)} has no sub-strands. Browse by strand instead.</p></div>`;
       return;
     }
-    // Selection is a comma-separated list in the URL, kept in picker order
+    // Sub-strand selection is a comma-separated list in the URL, kept in picker order
     const wanted = new Set(String(slugList || "").split(",").filter(Boolean));
     let selected = ix.subs.filter((s) => wanted.has(s.slug));
     if (!selected.length) selected = [ix.subs[0]];
     const selSlugs = selected.map((s) => s.slug);
-    // Display options: which statements to show (Know and Do, Know only, Do only) and a condensed layout
+
+    // Strands that contain any selected sub-strand, in framework order. The strand selection is a
+    // comma-separated list too; empty means all of them. Strands that no longer apply are dropped.
+    const strands = ix.doc.strands.filter((st) => selected.some((sub) => sub.entries.some((e) => e.strand === st)));
+    const strandSel = String(strandParam || "").split(",").filter((slug) => strands.some((s) => s.slug === slug));
+    const inPlay = strandSel.length ? strands.filter((s) => strandSel.includes(s.slug)) : strands;
+
+    // Display options: which statements to show and a condensed layout
     const showKD = ["k", "d"].includes(params.get("show")) ? params.get("show") : "kd";
     const condensed = params.get("view") === "condensed";
-    const routeFor = (slugs, strand, whole = includeWhole, opts = {}) => {
+    const routeFor = (slugs, strandSlugs = strandSel, whole = includeWhole, opts = {}) => {
       const q = new URLSearchParams();
       const show = opts.show ?? showKD;
       const dense = opts.condensed ?? condensed;
-      if (strand) q.set("strand", strand);
+      if (strandSlugs.length) q.set("strand", strandSlugs.join(","));
       if (whole) q.set("whole", "1");
       if (show !== "kd") q.set("show", show);
       if (dense) q.set("view", "condensed");
@@ -274,105 +281,57 @@
       return href(area, "substrand", slugs.join(",")) + (qs ? "?" + qs : "");
     };
 
-    // Strands that contain any selected sub-strand (for the filter); drop a filter that no longer applies
-    const strands = [];
-    for (const sub of selected) for (const e of sub.entries) if (!strands.includes(e.strand)) strands.push(e.strand);
-    if (strandFilter && !strands.some((s) => s.slug === strandFilter)) strandFilter = null;
+    // One column per selected strand at a level. A cell holds the selected sub-strands' statements and,
+    // when the option is on, the statements written for the whole strand (no sub-strand label).
+    const blocksAt = (node, l) => (node.blocks || []).filter((b) => b.level === l.code);
+    const stmts = (blocks) => blocks.flatMap((b) => b.statements || []);
+    const colsAt = (l) => inPlay.map((st) => {
+      const groups = [], und = [];
+      const addUnd = (b) => { const u = understandingOf(ix, b); if (u && !und.includes(u)) und.push(u); };
+      let ownUnderstanding = false;
+      for (const sub of selected) {
+        for (const e of sub.entries) {
+          if (e.strand !== st || !e.node.levels.includes(l.code)) continue;
+          const blocks = blocksAt(e.node, l);
+          blocks.forEach(addUnd);
+          if (blocks.some((b) => b.understanding)) ownUnderstanding = true;
+          groups.push({ label: sub.name, origin: "sub", sts: stmts(blocks) });
+        }
+      }
+      const hasSub = groups.length > 0;
+      if (includeWhole) {
+        const own = blocksAt(st, l);
+        const sts = stmts(own);
+        if (sts.length) { own.forEach(addUnd); groups.push({ label: "Whole strand", origin: "whole", sts }); }
+      }
+      if (!hasSub && !groups.length) return null;
+      return { strand: st, groups, und, inherited: hasSub && !ownUnderstanding };
+    }).filter(Boolean);
+    const levels = LEVELS.map((l) => ({ l, cols: colsAt(l) })).filter((x) => x.cols.length);
 
-    const entriesOf = (sub) => sub.entries.filter((e) => !strandFilter || e.strand.slug === strandFilter);
-    // Strands in play (respecting the strand filter), in framework order
-    const inPlay = ix.doc.strands.filter((st) => strands.includes(st) && (!strandFilter || st.slug === strandFilter));
-    // Statements written for the whole strand, with no sub-strand label (e.g. Early to Second Level in Technologies)
-    const wholeBlocks = (st, l) => (st.blocks || []).filter((b) => b.level === l.code && (b.statements || []).length);
-    const hasSub = (l) => selected.some((sub) => entriesOf(sub).some((e) => e.node.levels.includes(l.code)));
-    const levels = LEVELS.filter((l) => hasSub(l) || (includeWhole && inPlay.some((st) =>
-      wholeBlocks(st, l).length || ix.nodes.some((n) => n.strand === st && n.depth > 0 && n.node.levels.includes(l.code)))));
-    const multi = selected.length > 1;
-
-    // One table per sub-strand per level: the strands it appears in are the columns,
-    // Understand / Know / Do (and any notes) are the rows.
     const items = (sts, k) => sts.filter((x) => x.kind === k);
     const listHtml = (sts) => sts.length
       ? `<ul>${sts.map((x) => `<li title="${esc(x.code)}">${inlineMd(x.body)}</li>`).join("")}</ul>` : "";
-    // A column is one strand at one level. Its statements come in groups, each labelled with where they
-    // come from: the selected sub-strand, the whole strand (no sub-strand label) or another sub-strand.
-    const blocksAt = (node, l) => (node.blocks || []).filter((b) => b.level === l.code);
-    const stmts = (blocks) => blocks.flatMap((b) => b.statements || []);
-    const subCols = (sub, l) => entriesOf(sub).filter((e) => e.node.levels.includes(l.code)).map((e) => {
-      const blocks = blocksAt(e.node, l);
-      // statements on the strand's own row apply to every sub-strand that shares its Understanding
-      const shared = stmts(blocks.map((b) => b.anchor && ix.blocks.get(b.anchor)?.block).filter(Boolean));
-      return {
-        strand: e.strand,
-        groups: [{ label: sub.name, origin: "sub", sts: stmts(blocks) }, { label: "Whole strand", origin: "whole", sts: shared }],
-        und: [...new Set(blocks.map((b) => understandingOf(ix, b)).filter(Boolean))],
-        inherited: blocks.every((b) => !b.understanding),
-      };
-    });
-    // Option "include statements without a sub-strand": one table per level holding everything the strands in
-    // play contain there, so levels without the selected sub-strand still read like the later levels.
-    const mergedCols = (l) => inPlay.map((st) => {
-      const groups = [];
-      const seenAnchors = new Set();
-      const und = [];
-      const addUnd = (b) => { const u = understandingOf(ix, b); if (u && !und.includes(u)) und.push(u); };
-      let inherited = true;
-      const hits = selected.flatMap((sub) => entriesOf(sub).filter((e) => e.strand === st && e.node.levels.includes(l.code))
-        .map((e) => ({ sub, e })));
-      for (const { sub, e } of hits) {
-        const blocks = blocksAt(e.node, l);
-        blocks.forEach(addUnd);
-        if (blocks.some((b) => b.understanding)) inherited = false;
-        groups.push({ label: sub.name, origin: "sub", sts: stmts(blocks) });
-        for (const b of blocks) if (b.anchor) seenAnchors.add(b.anchor);
-      }
-      // the strand's own statements (no sub-strand label)
-      const own = blocksAt(st, l);
-      own.forEach(addUnd);
-      const wholeSts = stmts(own);
-      if (wholeSts.length) groups.push({ label: "Whole strand", origin: "whole", sts: wholeSts });
-      if (!hits.length) {
-        inherited = false;
-        // other sub-strands at this level, in framework order
-        for (const n of ix.nodes) {
-          if (n.strand !== st || n.depth === 0 || !n.node.levels.includes(l.code)) continue;
-          const blocks = blocksAt(n.node, l);
-          blocks.forEach(addUnd);
-          const sts = stmts(blocks);
-          if (sts.length) groups.push({ label: n.node.name, origin: "other", sts });
-        }
-      }
-      return groups.some((g) => g.sts.length) ? { strand: st, groups, und, inherited: hits.length > 0 && inherited } : null;
-    }).filter(Boolean);
-
     const extraKinds = ["includes", "excludes", "note"];
-    const tableHtml = (cols, l, label, merged) => {
-      if (!cols.length) return "";
-      // label groups by origin whenever a table mixes origins (always for merged tables with more than one)
+    const tableHtml = (cols, l) => {
+      // label groups by origin whenever the table mixes them (several sub-strands, or whole-strand statements)
       const labels = new Set(cols.flatMap((c) => c.groups.filter((g) => g.sts.length).map((g) => g.label)));
-      const showTags = merged ? labels.size > 1 : false;
-      const tag = (g) => `<p class="ss-tag ${g.origin}">${esc(g.label)}</p>`;
-      const cell = (c, k) => {
-        const parts = c.groups.map((g) => {
-          const list = listHtml(items(g.sts, k));
-          if (!list) return "";
-          if (showTags) return tag(g) + list;
-          return g.origin === "whole" && c.groups.some((x) => x.origin === "sub")
-            ? `<p class="ss-shared">Across the whole ${esc(c.strand.name)} strand</p>${list}` : list;
-        }).join("");
-        return parts || `<p class="none">None at this level.</p>`;
-      };
-      const allSts = (c) => c.groups.flatMap((g) => g.sts.filter((x) => extraKinds.includes(x.kind)).map((x) => ({ x, g })));
-      const hasExtras = cols.some((c) => allSts(c).length);
+      const showTags = labels.size > 1;
+      const cell = (c, k) => c.groups.map((g) => {
+        const list = listHtml(items(g.sts, k));
+        return list ? (showTags ? `<p class="ss-tag ${g.origin}">${esc(g.label)}</p>` : "") + list : "";
+      }).join("") || `<p class="none">None at this level.</p>`;
+      const allExtras = (c) => c.groups.flatMap((g) => g.sts.filter((x) => extraKinds.includes(x.kind)).map((x) => ({ x, g })));
+      const hasExtras = cols.some((c) => allExtras(c).length);
       const extrasCell = (c) => {
-        const all = allSts(c);
+        const all = allExtras(c);
         return all.length
           ? `<details><summary>${all.length} note${all.length === 1 ? "" : "s"}</summary>${all.map(({ x, g }) =>
               `<div class="extra ${x.kind}" title="${esc(x.code)}"><h5>${EXTRA_LABEL[x.kind]}${showTags ? ` <span class="ss-tag-inline">· ${esc(g.label)}</span>` : ""}</h5>${md(x.body)}</div>`).join("")}</details>`
           : `<p class="none">None.</p>`;
       };
       const row = (cls, name, fn) => `<tr class="${cls}"><th scope="row">${name}</th>${cols.map((c) => `<td>${fn(c)}</td>`).join("")}</tr>`;
-      return `<div class="ss-wrap" tabindex="0" role="region" aria-label="${esc(label)} at ${l.name} Level">
+      return `<div class="ss-wrap" tabindex="0" role="region" aria-label="${l.name} Level">
         <table class="ss-table ${lvlClass(l.code)}${condensed ? " condensed" : ""}" style="--cols:${cols.length}">
           <thead><tr><td class="corner"></td>${cols.map((c) =>
             `<th scope="col"><a href="${href(area, "strand", c.strand.slug, l.code)}">${esc(c.strand.name)}</a></th>`).join("")}</tr></thead>
@@ -387,71 +346,64 @@
     };
 
     const names = selected.map((s) => s.name);
-    const sections = levels.map((l) => {
-      let body;
-      if (includeWhole) {
-        const cols = mergedCols(l);
-        const present = selected.filter((sub) => entriesOf(sub).some((e) => e.node.levels.includes(l.code))).map((s) => s.name);
-        const origins = new Set(cols.flatMap((c) => c.groups.filter((g) => g.sts.length).map((g) => g.origin)));
-        const note = present.length
-          ? `${listNames(present)} in each strand${origins.size > 1 ? ", with other statements from these strands labelled by where they come from" : ""}.`
-          : `${listNames(names)} ${names.length === 1 ? "is" : "are"} not a sub-strand at this level. This shows what these strands contain here${
-              origins.size > 1 ? ", labelled by where each statement comes from" : ""}.`;
-        body = cols.length ? `<p class="section-sub">${esc(note)}</p>${tableHtml(cols, l, "All statements", true)}` : "";
-      } else {
-        body = selected.map((sub) => {
-          const t = tableHtml(subCols(sub, l), l, sub.name, false);
-          if (!t) return "";
-          return multi ? `<div class="sub-group"><h3 class="group-title">${esc(sub.name)}</h3>${t}</div>` : t;
-        }).join("");
-      }
-      if (!body) return "";
+    const sections = levels.map(({ l, cols }) => {
+      const present = selected.filter((sub) => cols.some((c) => c.groups.some((g) => g.origin === "sub" && g.label === sub.name)));
+      const hasWhole = cols.some((c) => c.groups.some((g) => g.origin === "whole"));
+      const note = !present.length
+        ? `${listNames(names)} ${names.length === 1 ? "is" : "are"} not a sub-strand at this level: showing statements written for the whole strand.`
+        : present.length < selected.length || hasWhole
+          ? `${listNames(present.map((s) => s.name))}${hasWhole ? ", with statements written for the whole strand" : ""}.`
+          : "";
       return `<section class="level-section ${lvlClass(l.code)}" id="l-${l.code}">
-        <h2 class="section-title">${levelMark(l.code)}${l.name} Level</h2>${body}</section>`;
+        <h2 class="section-title">${levelMark(l.code)}${l.name} Level</h2>
+        ${note ? `<p class="section-sub">${esc(note)}</p>` : ""}${tableHtml(cols, l)}</section>`;
     }).join("");
 
-    const allLevels = [...new Set([...selected.flatMap((sub) => sub.entries.flatMap((e) => e.node.levels)), ...levels.map((l) => l.code)])];
     const title = names.length > 3 ? `${names.length} sub-strands` : listNames(names);
-    const intro = multi
-      ? `${levelRange(allLevels)}. ${names.length > 3 ? esc(listNames(names)) + ", g" : "G"}athered from ${strands.length} strand${strands.length === 1 ? "" : "s"} and grouped by level.`
-      : `${levelRange(allLevels)}. ${esc(selected[0].name)} appears in ${strands.length} strand${strands.length === 1 ? "" : "s"}. Each level shows a table with those strands as columns and the Know and Do statements beneath.`;
+    const range = levelRange(levels.map((x) => x.l.code));
+    const intro = `${range}. ${multiStrandText(strands.length)} Each level shows one table: the selected strands as columns and the selected sub-strands' statements beneath.`;
+    function multiStrandText(n) {
+      return names.length === 1 ? `${esc(selected[0].name)} appears in ${n} strand${n === 1 ? "" : "s"}.`
+        : `${names.length > 3 ? esc(listNames(names)) + ", g" : "G"}athered from ${n} strand${n === 1 ? "" : "s"}.`;
+    }
 
     main.innerHTML = `
-      <div class="page-head"><h1>${esc(title)}</h1><p>${intro}</p>${strandFilter || strands.length === 1 ? (() => {
-        const st = strandFilter ? strands.find((x) => x.slug === strandFilter) : strands[0];
-        return `<p class="page-links"><a href="${progressionHref(area, "k", [st.slug])}">See ${esc(st.name)} in the progression matrix</a></p>`;
-      })() : ""}</div>
+      <div class="page-head"><h1>${esc(title)}</h1><p>${intro}</p>${inPlay.length === 1
+        ? `<p class="page-links"><a href="${progressionHref(area, "k", [inPlay[0].slug])}">See ${esc(inPlay[0].name)} in the progression matrix</a></p>` : ""}</div>
       <div class="picker-bar">
         <p class="picker-label" id="sub-pick">Sub-strands <span class="hint">Select one or more</span></p>
-        <button type="button" class="link-btn" data-go="${routeFor(ix.subs.map((s) => s.slug), strandFilter)}">Select all</button>
+        <button type="button" class="link-btn" data-go="${routeFor(ix.subs.map((s) => s.slug))}">Select all</button>
       </div>
       <ul class="picker" aria-labelledby="sub-pick">${ix.subs.map((s) => {
         const on = selSlugs.includes(s.slug);
         const next = on ? selSlugs.filter((x) => x !== s.slug) : ix.subs.map((x) => x.slug).filter((x) => x === s.slug || selSlugs.includes(x));
         // The last selected sub-strand stays selected: the page always shows at least one
         const locked = on && selSlugs.length === 1;
-        return `<li><button type="button" class="chip" aria-pressed="${on}" ${locked ? 'aria-disabled="true" title="At least one sub-strand stays selected"' : `data-go="${routeFor(next, strandFilter)}"`}>${esc(s.name)}</button></li>`;
+        return `<li><button type="button" class="chip" aria-pressed="${on}" ${locked ? 'aria-disabled="true" title="At least one sub-strand stays selected"' : `data-go="${routeFor(next)}"`}>${esc(s.name)}</button></li>`;
       }).join("")}</ul>
-      ${strands.length > 1 ? `<div class="filter" role="group" aria-label="Show strand"><span>Show</span>
-        <button type="button" aria-pressed="${!strandFilter}" data-go="${routeFor(selSlugs)}">All strands</button>
-        ${strands.map((s) => `<button type="button" aria-pressed="${strandFilter === s.slug}" data-go="${routeFor(selSlugs, s.slug)}">${esc(s.name)}</button>`).join("")}
+      ${strands.length > 1 ? `<div class="filter strand-filter" role="group" aria-label="Strands"><span>Strands</span>
+        <button type="button" aria-pressed="${!strandSel.length}" data-go="${routeFor(selSlugs, [])}">All strands</button>
+        ${strands.map((s) => {
+          const on = strandSel.includes(s.slug);
+          const next = on ? strandSel.filter((x) => x !== s.slug) : strands.map((x) => x.slug).filter((x) => x === s.slug || strandSel.includes(x));
+          return `<button type="button" class="chip" aria-pressed="${on}" data-go="${routeFor(selSlugs, next)}">${esc(s.name)}</button>`;
+        }).join("")}
       </div>` : ""}
       <div class="filter whole-toggle" role="group" aria-label="Statements without a sub-strand">
-        <button type="button" class="chip" aria-pressed="${!!includeWhole}" data-go="${routeFor(selSlugs, strandFilter, !includeWhole)}">Include statements without a sub-strand</button>
-        <span class="hint">Shows one table per level with everything ${inPlay.length === 1 ? esc(inPlay[0].name) : "these strands"} contain${inPlay.length === 1 ? "s" : ""} there, labelled by origin, including levels before the sub-strand starts</span>
+        <button type="button" class="chip" aria-pressed="${!!includeWhole}" data-go="${routeFor(selSlugs, strandSel, !includeWhole)}">Include statements without a sub-strand</button>
+        <span class="hint">Adds statements written for the whole strand, including levels before the sub-strand starts</span>
       </div>
       <div class="filter display-bar" role="group" aria-label="Display options">
         <span>Statements</span>
-        ${[["kd", "Know and Do"], ["k", "Know only"], ["d", "Do only"]].map(([v, name]) =>
-          `<button type="button" aria-pressed="${showKD === v}" data-go="${routeFor(selSlugs, strandFilter, includeWhole, { show: v })}">${name}</button>`).join("")}
+        ${[["kd", "Know and Do"], ["k", "Know only"], ["d", "Do only"]].map(([v, label]) =>
+          `<button type="button" aria-pressed="${showKD === v}" data-go="${routeFor(selSlugs, strandSel, includeWhole, { show: v })}">${label}</button>`).join("")}
         <span class="sep" aria-hidden="true"></span>
-        <button type="button" class="chip" aria-pressed="${condensed}" data-go="${routeFor(selSlugs, strandFilter, includeWhole, { condensed: !condensed })}">Condensed view</button>
+        <button type="button" class="chip" aria-pressed="${condensed}" data-go="${routeFor(selSlugs, strandSel, includeWhole, { condensed: !condensed })}">Condensed view</button>
       </div>
-      ${sections || `<p class="empty">Nothing to show for this selection.</p>`}`;
+      ${sections || `<p class="empty">Nothing to show for this selection.${includeWhole ? "" : " Try including statements without a sub-strand."}</p>`}`;
     document.title = `${title} · ${ix.doc.name} · Curriculum Explorer`;
     if (focusLevel) scrollToId("l-" + focusLevel);
   }
-
   function viewMatrix(ix) {
     const area = state.area;
     const rows = ix.doc.strands.map((s) => {
