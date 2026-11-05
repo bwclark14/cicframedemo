@@ -271,31 +271,57 @@
     const levels = LEVELS.filter((l) => selected.some((sub) => entriesOf(sub).some((e) => e.node.levels.includes(l.code))));
     const multi = selected.length > 1;
 
-    const blockHtml = (e, l) => {
-      const blocks = (e.node.blocks || []).filter((b) => b.level === l.code);
-      return `<section class="sub-block" aria-label="${esc(e.node.name)} in ${esc(e.strand.name)}">
-        <h3><a href="${href(area, "strand", e.strand.slug, l.code)}">${esc(e.strand.name)}</a></h3>
-        ${blocks.map((b) => {
-          // Statements on the strand's own row apply to every sub-strand that shares its Understanding
-          const anchor = b.anchor ? ix.blocks.get(b.anchor)?.block : null;
-          const shared = anchor && anchor.statements?.length
-            ? `<div class="shared"><h4>Across the whole ${esc(e.strand.name)} strand</h4>${statementsHtml(anchor)}</div>` : "";
-          return understandingHtml(understandingOf(ix, b), {
-            inherited: !b.understanding, small: true,
-            label: b.understanding ? "Understand" : `Understand (shared across the ${e.strand.name} strand)`,
-          }) + (statementsHtml(b) || `<p class="empty">No statements at this level.</p>`) + shared;
-        }).join("")}
-      </section>`;
+    // One table per sub-strand per level: the strands it appears in are the columns,
+    // Understand / Know / Do (and any notes) are the rows.
+    const items = (sts, k) => sts.filter((x) => x.kind === k);
+    const listHtml = (sts) => sts.length
+      ? `<ul>${sts.map((x) => `<li title="${esc(x.code)}">${inlineMd(x.body)}</li>`).join("")}</ul>` : "";
+    const tableHtml = (sub, l) => {
+      const cols = entriesOf(sub).filter((e) => e.node.levels.includes(l.code)).map((e) => {
+        const blocks = (e.node.blocks || []).filter((b) => b.level === l.code);
+        const sts = blocks.flatMap((b) => b.statements || []);
+        // statements on the strand's own row apply to every sub-strand that shares its Understanding
+        const shared = blocks.map((b) => b.anchor && ix.blocks.get(b.anchor)?.block).filter(Boolean)
+          .flatMap((a) => a.statements || []);
+        const und = [...new Set(blocks.map((b) => understandingOf(ix, b)).filter(Boolean))];
+        return { e, sts, shared, und, inherited: blocks.every((b) => !b.understanding) };
+      });
+      if (!cols.length) return "";
+      const cell = (c, k) => {
+        const own = listHtml(items(c.sts, k));
+        const sh = items(c.shared, k);
+        const shared = sh.length ? `<p class="ss-shared">Across the whole ${esc(c.e.strand.name)} strand</p>${listHtml(sh)}` : "";
+        return own || shared ? own + shared : `<p class="none">None at this level.</p>`;
+      };
+      const extraKinds = ["includes", "excludes", "note"];
+      const hasExtras = cols.some((c) => [...c.sts, ...c.shared].some((x) => extraKinds.includes(x.kind)));
+      const extrasCell = (c) => {
+        const all = [...c.sts, ...c.shared].filter((x) => extraKinds.includes(x.kind));
+        return all.length
+          ? `<details><summary>${all.length} note${all.length === 1 ? "" : "s"}</summary>${all.map((x) =>
+              `<div class="extra ${x.kind}" title="${esc(x.code)}"><h5>${EXTRA_LABEL[x.kind]}</h5>${md(x.body)}</div>`).join("")}</details>`
+          : `<p class="none">None.</p>`;
+      };
+      const row = (cls, label, fn) => `<tr class="${cls}"><th scope="row">${label}</th>${cols.map((c) => `<td>${fn(c)}</td>`).join("")}</tr>`;
+      return `<div class="ss-wrap" tabindex="0" role="region" aria-label="${esc(sub.name)} at ${l.name} Level">
+        <table class="ss-table ${lvlClass(l.code)}" style="--cols:${cols.length}">
+          <thead><tr><td class="corner"></td>${cols.map((c) =>
+            `<th scope="col"><a href="${href(area, "strand", c.e.strand.slug, l.code)}">${esc(c.e.strand.name)}</a></th>`).join("")}</tr></thead>
+          <tbody>
+            ${row("r-u", "Understand", (c) => c.und.map((u) => `<p class="ss-u${c.inherited ? " inherited" : ""}">${esc(u)}</p>`).join("")
+              + (c.inherited ? `<p class="ss-note">Shared across the strand</p>` : ""))}
+            ${row("r-k", "Know", (c) => cell(c, "know"))}
+            ${row("r-d", "Do", (c) => cell(c, "do"))}
+            ${hasExtras ? row("r-n", "Notes", extrasCell) : ""}
+          </tbody>
+        </table></div>`;
     };
 
     const sections = levels.map((l) => {
       const groups = selected.map((sub) => {
-        const here = entriesOf(sub).filter((e) => e.node.levels.includes(l.code));
-        if (!here.length) return "";
-        const blocks = here.map((e) => blockHtml(e, l)).join("");
-        return multi
-          ? `<div class="sub-group"><h3 class="group-title">${esc(sub.name)}</h3><div class="subs">${blocks}</div></div>`
-          : `<div class="subs">${blocks}</div>`;
+        const t = tableHtml(sub, l);
+        if (!t) return "";
+        return multi ? `<div class="sub-group"><h3 class="group-title">${esc(sub.name)}</h3>${t}</div>` : t;
       }).join("");
       return `<section class="level-section ${lvlClass(l.code)}" id="l-${l.code}">
         <h2 class="section-title">${levelMark(l.code)}${l.name} Level</h2>${groups}</section>`;
@@ -306,7 +332,7 @@
     const title = names.length > 3 ? `${names.length} sub-strands` : listNames(names);
     const intro = multi
       ? `${levelRange(allLevels)}. ${names.length > 3 ? esc(listNames(names)) + ", g" : "G"}athered from ${strands.length} strand${strands.length === 1 ? "" : "s"} and grouped by level.`
-      : `${levelRange(allLevels)}. ${esc(selected[0].name)} appears in ${strands.length} strand${strands.length === 1 ? "" : "s"}; this page gathers it from each.`;
+      : `${levelRange(allLevels)}. ${esc(selected[0].name)} appears in ${strands.length} strand${strands.length === 1 ? "" : "s"}. Each level shows a table with those strands as columns and the Know and Do statements beneath.`;
 
     main.innerHTML = `
       <div class="page-head"><h1>${esc(title)}</h1><p>${intro}</p>${strandFilter || strands.length === 1 ? (() => {
@@ -518,7 +544,7 @@
       if (v === r.view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
 
-    document.body.classList.toggle("wide", r.view === "progression" || r.view === "matrix");
+    document.body.classList.toggle("wide", r.view === "progression" || r.view === "matrix" || r.view === "substrand");
     if (!r.b) window.scrollTo(0, 0);   // a 4th segment (strand or level) scrolls to that section instead
     if (r.view === "level") viewLevel(ix, r.a || "early", r.b);
     else if (r.view === "strand") viewStrand(ix, r.a, r.b);
