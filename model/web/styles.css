@@ -920,3 +920,26 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
 .plan-side-actions .export-btn { border-radius: var(--radius); padding: 5px 10px; }
 .export-holder { position: absolute; left: -100000px; top: 0; width: 1400px; }
 @media print { .export-btn { display: none !important; } }
+
+/* Planner: multi-level plans ------------------------------------------------ */
+.fld-levels { grid-column: span 1; }
+.lvl-chips { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 2px; }
+.lvl-chips .chip { font-size: 0.75rem; }
+.lvl-chips .chip[aria-disabled="true"] { cursor: default; }
+.plan-fields { grid-template-columns: minmax(0, 1.6fr) minmax(100px, 0.45fr) minmax(220px, 1.1fr); }
+.plan-tabs { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px; margin: 6px 0 8px; border-bottom: 2px solid var(--rule); }
+.plan-tabs [role="tab"] { appearance: none; border: 1px solid var(--rule); border-bottom: 0; background: var(--surface); color: var(--muted);
+  font: inherit; font-size: var(--step--1); font-weight: 600; padding: 5px 12px; border-radius: var(--radius) var(--radius) 0 0; cursor: pointer;
+  margin-bottom: -2px; border-top: 3px solid color-mix(in srgb, var(--lvl) 55%, var(--rule)); }
+.plan-tabs [role="tab"][aria-selected="true"] { color: var(--ink); border-top-color: var(--lvl); border-bottom: 2px solid var(--paper); background: var(--paper); }
+.plan-tabs [role="tab"]:hover { color: var(--ink); }
+.tab-n { display: inline-block; min-width: 1.4em; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--paper); border: 1px solid var(--rule);
+  font-size: 0.6875rem; font-variant-numeric: tabular-nums; text-align: center; }
+.plan-tabs [aria-selected="true"] .tab-n { background: var(--lvl); color: var(--lvl-ink); border-color: var(--lvl); }
+.tab-hint { margin-left: auto; align-self: center; color: var(--muted); font-size: 0.75rem; padding-bottom: 4px; }
+.sum-level + .sum-level { margin-top: 12px; padding-top: 10px; border-top: 2px solid var(--rule); }
+.sum-level-h { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.sum-level-n { color: var(--muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.lvl-pills { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+.h-note { display: block; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 0.6875rem; }
+@media (max-width: 860px) { .plan-fields { grid-template-columns: 1fr 1fr; } .fld-levels { grid-column: 1 / -1; } .tab-hint { margin-left: 0; width: 100%; } }

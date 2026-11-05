@@ -703,15 +703,24 @@
   const planUI = { id: null, level: null, strands: [], subs: [] };   // picker filters for the open plan
   let planSaveTimer = null;
 
+  /** A plan's levels in framework order; older plans have a single `level`. */
+  function planLevels(p) {
+    const raw = Array.isArray(p.levels) && p.levels.length ? p.levels : [p.level];
+    const lv = LEVELS.map((l) => l.code).filter((c) => raw.includes(c));
+    return lv.length ? lv : [LEVELS[0].code];
+  }
+  function normalisePlan(p) { const levels = planLevels(p); return { ...p, levels, level: levels[0] }; }
   function loadPlans() {
-    try { const v = JSON.parse(localStorage.getItem(PLANS_KEY) || "[]"); return Array.isArray(v) ? v : []; }
+    try { const v = JSON.parse(localStorage.getItem(PLANS_KEY) || "[]"); return Array.isArray(v) ? v.map(normalisePlan) : []; }
     catch { return []; }
   }
+  const levelCount = (ix, plan, code) => (plan.statements || []).filter((c) => ix.statements.get(c)?.block.level === code).length;
   function storePlans(plans) {
     try { localStorage.setItem(PLANS_KEY, JSON.stringify(plans)); return true; } catch { return false; }
   }
   const getPlan = (id) => loadPlans().find((p) => p.id === id);
   function putPlan(plan) {
+    Object.assign(plan, normalisePlan(plan));
     const plans = loadPlans();
     plan.updated = new Date().toISOString();
     const i = plans.findIndex((p) => p.id === plan.id);
@@ -779,7 +788,7 @@
 
   function masterDashboardHtml(ix, everyPlan) {
     // Level filter: only plans at the chosen levels, and only statements at those levels
-    const allPlans = auditUI.levels.length ? everyPlan.filter((p) => auditUI.levels.includes(p.level)) : everyPlan;
+    const allPlans = auditUI.levels.length ? everyPlan.filter((p) => p.levels.some((l) => auditUI.levels.includes(l))) : everyPlan;
     const yearOpts = YEAR_GROUPS.filter((y) => allPlans.some((p) => p.yearGroup === y));
     auditUI.years = auditUI.years.filter((y) => yearOpts.includes(y));
     const plans = auditUI.years.length ? allPlans.filter((p) => auditUI.years.includes(p.yearGroup)) : allPlans;
@@ -795,7 +804,7 @@
       ? YEAR_GROUPS.filter((y) => auditUI.levels.includes(YEAR_LEVEL[y]) || allPlans.some((p) => p.yearGroup === y)) : YEAR_GROUPS;
     if (!years.length) years = YEAR_GROUPS;
     const byYear = years.map((y) => [y, allPlans.filter((p) => p.yearGroup === y).length]);
-    const byLevel = LEVELS.filter((l) => !auditUI.levels.length || auditUI.levels.includes(l.code)).map((l) => [l, allPlans.filter((p) => p.level === l.code).length]);
+    const byLevel = LEVELS.filter((l) => !auditUI.levels.length || auditUI.levels.includes(l.code)).map((l) => [l, allPlans.filter((p) => p.levels.includes(l.code)).length]);
     const maxY = Math.max(1, ...byYear.map(([, n]) => n)), maxL = Math.max(1, ...byLevel.map(([, n]) => n));
     const bars = (items, max, label) => `<ul class="count-bars">${items.map(([name, n, cls]) =>
       `<li title="${esc(name)}: ${n} plan${n === 1 ? "" : "s"}"><span class="cb-label">${esc(name)}</span>
@@ -870,7 +879,7 @@
       </div>
       <div class="dist">
         <div><h3>Plans by year group</h3>${bars(byYear.map(([y, n]) => [y, n]), maxY)}</div>
-        <div><h3>Plans by level</h3>${bars(byLevel.map(([l, n]) => [`${l.name} Level`, n, lvlClass(l.code)]), maxL)}</div>
+        <div><h3>Plans by level <small class="h-note">a plan spanning levels counts at each</small></h3>${bars(byLevel.map(([l, n]) => [`${l.name} Level`, n, lvlClass(l.code)]), maxL)}</div>
       </div>
       <h2 class="block-title">Coverage audit</h2>
       <p class="block-intro">How many of the framework's statements at each level are in at least one plan. Select a cell to see which statements are covered, by which plans, and what is still to plan.</p>
@@ -929,12 +938,12 @@
     const plans = loadPlans().filter((p) => p.area === area).sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
     const rows = plans.map((p) => {
       const cov = planCoverage(ix, p);
-      const other = cov.levels.filter((l) => l !== p.level);
+      const other = cov.levels.filter((l) => !p.levels.includes(l));
       return `<tr>
         <td><a class="plan-name" href="${href(area, "planner", p.id)}">${esc(p.name || "Untitled plan")}</a>
           ${p.description ? `<p class="plan-desc">${esc(p.description.length > 140 ? p.description.slice(0, 140) + "…" : p.description)}</p>` : ""}</td>
         <td>${esc(p.yearGroup || "")}</td>
-        <td><span class="lvl-pill ${lvlClass(p.level)}">${LEVEL_NAME[p.level] || ""}</span>${other.length
+        <td><span class="lvl-pills">${p.levels.map((l) => `<span class="lvl-pill ${lvlClass(l)}">${LEVEL_NAME[l]}</span>`).join("")}</span>${other.length
           ? `<small class="plan-also">also ${other.map((l) => LEVEL_NAME[l]).join(", ")}</small>` : ""}</td>
         <td>${cov.strands.length ? cov.strands.map((c) => `<div class="cov"><span class="cov-strand">${esc(c.strand.name)}</span>
           <span class="cov-subs">${c.subs.map((x) => `<span class="cov-sub">${esc(x)}</span>`).join("")}</span></div>`).join("")
@@ -967,7 +976,7 @@
   }
 
   function planPickerHtml(ix, plan) {
-    const level = plan.level;
+    const level = planUI.level;
     const strands = ix.doc.strands.filter((s) => s.levels.includes(level));
     const subOptions = [{ value: "_whole", label: "Whole strand" }, ...ix.subs
       .filter((s) => s.entries.some((e) => e.node.levels.includes(level)))
@@ -1004,19 +1013,25 @@
   function planSummaryHtml(ix, plan) {
     const picked = (plan.statements || []).map((c) => ix.statements.get(c)).filter(Boolean);
     if (!picked.length) return `<p class="none">No statements yet. Tick Know and Do statements in the table below to add them.</p>`;
-    const byStrand = new Map();
-    for (const h of picked) {
-      const sub = h.depth > 0 ? h.node.name : "Whole strand";
-      if (!byStrand.has(h.strand)) byStrand.set(h.strand, new Map());
-      const m = byStrand.get(h.strand);
-      if (!m.has(sub)) m.set(sub, []);
-      m.get(sub).push(h);
-    }
-    return ix.doc.strands.filter((s) => byStrand.has(s)).map((s) => `<div class="sum-strand"><h3>${esc(s.name)}</h3>${
-      [...byStrand.get(s)].map(([sub, hs]) => `<div class="sum-sub"><p class="ss-tag ${sub === "Whole strand" ? "whole" : "sub"}">${esc(sub)}</p>${
-        ["know", "do"].map((k) => { const xs = hs.filter((h) => h.s.kind === k); return xs.length ? `<p class="kd-h ${k}">${k === "know" ? "Know" : "Do"}</p><ul class="sum-list">${xs.map((h) =>
-          `<li data-code="${esc(h.s.code)}"><span>${inlineMd(h.s.body)}${h.block.level !== plan.level ? ` <small class="plan-also">(${LEVEL_NAME[h.block.level]} Level)</small>` : ""}</span>
-            <button type="button" class="link-btn" data-unpick="${esc(h.s.code)}" aria-label="Remove from plan">Remove</button></li>`).join("")}</ul>` : ""; }).join("")}</div>`).join("")}</div>`).join("");
+    const strandsHtml = (hits) => {
+      const byStrand = new Map();
+      for (const h of hits) {
+        const sub = h.depth > 0 ? h.node.name : "Whole strand";
+        if (!byStrand.has(h.strand)) byStrand.set(h.strand, new Map());
+        const m = byStrand.get(h.strand);
+        if (!m.has(sub)) m.set(sub, []);
+        m.get(sub).push(h);
+      }
+      return ix.doc.strands.filter((s) => byStrand.has(s)).map((s) => `<div class="sum-strand"><h3>${esc(s.name)}</h3>${
+        [...byStrand.get(s)].map(([sub, hs]) => `<div class="sum-sub"><p class="ss-tag ${sub === "Whole strand" ? "whole" : "sub"}">${esc(sub)}</p>${
+          ["know", "do"].map((k) => { const xs = hs.filter((h) => h.s.kind === k); return xs.length ? `<p class="kd-h ${k}">${k === "know" ? "Know" : "Do"}</p><ul class="sum-list">${xs.map((h) =>
+            `<li data-code="${esc(h.s.code)}"><span>${inlineMd(h.s.body)}</span>
+              <button type="button" class="link-btn" data-unpick="${esc(h.s.code)}" aria-label="Remove from plan">Remove</button></li>`).join("")}</ul>` : ""; }).join("")}</div>`).join("")}</div>`).join("");
+    };
+    const levels = LEVELS.filter((l) => picked.some((h) => h.block.level === l.code));
+    if (levels.length < 2 && plan.levels.length < 2) return strandsHtml(picked);
+    return levels.map((l) => `<div class="sum-level ${lvlClass(l.code)}"><p class="sum-level-h"><span class="lvl-pill ${lvlClass(l.code)}">${l.name} Level</span>
+      <span class="sum-level-n">${picked.filter((h) => h.block.level === l.code).length}</span></p>${strandsHtml(picked.filter((h) => h.block.level === l.code))}</div>`).join("");
   }
 
   function viewPlan(ix, id) {
@@ -1027,7 +1042,7 @@
         <p class="page-links"><a href="${href(area, "planner")}">Back to all plans</a></p></div>`;
       return;
     }
-    if (planUI.id !== plan.id || planUI.level !== plan.level) Object.assign(planUI, { id: plan.id, level: plan.level, strands: [], subs: [] });
+    if (planUI.id !== plan.id || !plan.levels.includes(planUI.level)) Object.assign(planUI, { id: plan.id, level: plan.levels[0], strands: [], subs: [] });
     const cov = planCoverage(ix, plan);
     const suggested = YEAR_LEVEL[plan.yearGroup];
     main.innerHTML = `
@@ -1038,9 +1053,10 @@
             <input type="text" data-plan-field="name" value="${esc(plan.name || "")}" placeholder="e.g. Designing a smart garden" autocomplete="off"></label>
           <label class="fld"><span>Year group</span>
             <select data-plan-field="yearGroup">${YEAR_GROUPS.map((y) => `<option${y === plan.yearGroup ? " selected" : ""}>${y}</option>`).join("")}</select></label>
-          <label class="fld"><span>Level</span>
-            <select data-plan-field="level">${LEVELS.map((l) => `<option value="${l.code}"${l.code === plan.level ? " selected" : ""}>${l.name} Level</option>`).join("")}</select>
-            ${suggested && suggested !== plan.level ? `<small class="fld-hint">${esc(plan.yearGroup)} usually works at ${LEVEL_NAME[suggested]} Level</small>` : ""}</label>
+          <div class="fld fld-levels" role="group" aria-labelledby="plan-levels-l"><span id="plan-levels-l">Levels</span>
+            <div class="lvl-chips">${LEVELS.map((l) => `<button type="button" class="chip" data-plan-level="${l.code}" aria-pressed="${plan.levels.includes(l.code)}"
+              ${plan.levels.length === 1 && plan.levels[0] === l.code ? 'aria-disabled="true" title="A plan needs at least one level"' : ""}>${l.name}</button>`).join("")}</div>
+            ${suggested && !plan.levels.includes(suggested) ? `<small class="fld-hint">${esc(plan.yearGroup)} usually works at ${LEVEL_NAME[suggested]} Level</small>` : ""}</div>
           <label class="fld fld-desc"><span>What is planned</span>
             <textarea data-plan-field="description" rows="4" placeholder="Describe the learning, activities and outcomes">${esc(plan.description || "")}</textarea></label>
         </div>
@@ -1060,9 +1076,13 @@
           <p class="sum-last" role="status" aria-live="polite"></p>
           <div data-plan-summary>${planSummaryHtml(ix, plan)}</div>
         </aside>
-        <section class="plan-picker level-section ${lvlClass(plan.level)}">
-          <h2 class="section-title">${levelMark(plan.level)}Choose statements: ${LEVEL_NAME[plan.level]} Level</h2>
-          <p class="section-sub">Tick the Know and Do statements this plan covers. Each change is added to the plan and saved straight away.</p>
+        <section class="plan-picker level-section ${lvlClass(planUI.level)}">
+          <h2 class="section-title">${levelMark(planUI.level)}Choose statements</h2>
+          <div class="plan-tabs" role="tablist" aria-label="Level to choose statements from">${plan.levels.map((l) =>
+            `<button type="button" role="tab" class="${lvlClass(l)}" aria-selected="${l === planUI.level}" data-plan-tab="${l}">${LEVEL_NAME[l]} Level
+              <span class="tab-n" data-tab-count="${l}">${levelCount(ix, plan, l)}</span></button>`).join("")}
+            <span class="tab-hint">${plan.levels.length > 1 ? "Switch level to add its statements; the plan keeps them all." : "Add more levels under Levels above to plan across levels."}</span></div>
+          <p class="section-sub">Tick the Know and Do statements this plan covers at ${LEVEL_NAME[planUI.level]} Level. Each change is added to the plan and saved straight away.</p>
           <div data-plan-picker>${planPickerHtml(ix, plan)}</div>
         </section>
       </div>
@@ -1081,6 +1101,7 @@
     set('[data-count="do"]', cov.do);
     set('[data-count="total"]', cov.know + cov.do);
     set('[data-tray="count"]', cov.know + cov.do);
+    main.querySelectorAll("[data-tab-count]").forEach((el) => { el.textContent = levelCount(ix, plan, el.dataset.tabCount); });
     const aside = main.querySelector(".plan-summary");
     const keep = aside ? aside.scrollTop : 0;
     main.querySelector("[data-plan-summary]").innerHTML = planSummaryHtml(ix, plan);
@@ -1114,7 +1135,7 @@
     const t = e.target;
     if (t.closest("[data-plan-new]")) {
       const yearGroup = "P5";
-      const plan = { id: newPlanId(), area, name: "", yearGroup, level: YEAR_LEVEL[yearGroup], description: "", statements: [],
+      const plan = { id: newPlanId(), area, name: "", yearGroup, levels: [YEAR_LEVEL[yearGroup]], level: YEAR_LEVEL[yearGroup], description: "", statements: [],
         created: new Date().toISOString() };
       putPlan(plan);
       location.hash = href(area, "planner", plan.id);
@@ -1143,6 +1164,42 @@
       return true;
     }
     if (t.closest("[data-plan-print]")) { window.print(); return true; }
+    const lvBtn = t.closest("[data-plan-level]");
+    if (lvBtn && r.a) {
+      if (planPending) flushPlanText();
+      const plan = getPlan(r.a);
+      const code = lvBtn.dataset.planLevel;
+      if (!plan) return true;
+      if (plan.levels.includes(code)) {
+        if (plan.levels.length === 1) return true;              // a plan keeps at least one level
+        const n = levelCount(ix, plan, code);
+        if (n && !confirm(`Remove ${LEVEL_NAME[code]} Level from this plan? Its ${n} chosen statement${n === 1 ? "" : "s"} will be removed too.`)) return true;
+        plan.levels = plan.levels.filter((l) => l !== code);
+        plan.statements = plan.statements.filter((c) => ix.statements.get(c)?.block.level !== code);
+      } else {
+        plan.levels = [...plan.levels, code];
+        planUI.level = code; planUI.strands = []; planUI.subs = [];   // go straight to the new level
+      }
+      savePlanAndReport(plan);
+      const y = window.scrollY;
+      viewPlan(ix, plan.id);
+      planStatus(`Saved ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+      window.scrollTo(0, y);
+      return true;
+    }
+    const tab = t.closest("[data-plan-tab]");
+    if (tab && r.a) {
+      const plan = getPlan(r.a);
+      if (!plan || tab.dataset.planTab === planUI.level) return true;
+      Object.assign(planUI, { level: tab.dataset.planTab, strands: [], subs: [] });
+      const sec = main.querySelector(".plan-picker");
+      sec.className = `plan-picker level-section ${lvlClass(planUI.level)}`;
+      sec.querySelector(".section-title").innerHTML = `${levelMark(planUI.level)}Choose statements`;
+      sec.querySelectorAll("[data-plan-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.planTab === planUI.level)));
+      sec.querySelector(".section-sub").textContent = `Tick the Know and Do statements this plan covers at ${LEVEL_NAME[planUI.level]} Level. Each change is added to the plan and saved straight away.`;
+      sec.querySelector("[data-plan-picker]").innerHTML = planPickerHtml(ix, plan);
+      return true;
+    }
     if (t.closest("[data-tray-link]")) {
       const aside = main.querySelector("#plan-summary");
       aside?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1184,6 +1241,7 @@
         if (!Array.isArray(incoming)) { planStatus("That file is not a plans export."); return; }
         const ok = incoming.filter((p) => p && typeof p.id === "string" && Array.isArray(p.statements)).map((p) => ({
           id: p.id, area: String(p.area || state.area), name: String(p.name || ""), yearGroup: YEAR_GROUPS.includes(p.yearGroup) ? p.yearGroup : "P1",
+          levels: planLevels({ levels: Array.isArray(p.levels) ? p.levels : [], level: LEVEL_NAME[p.level] ? p.level : "early" }),
           level: LEVEL_NAME[p.level] ? p.level : "early", description: String(p.description || ""),
           statements: p.statements.filter((c) => typeof c === "string"), created: p.created || new Date().toISOString(), updated: p.updated || new Date().toISOString() }));
         const plans = loadPlans();
@@ -1207,12 +1265,12 @@
       return;
     }
     const field = t.dataset.planField;
-    if (field === "yearGroup" || field === "level") {
+    if (field === "yearGroup") {
       if (planPending) flushPlanText();          // keep typed text before the page is redrawn
       Object.assign(plan, getPlan(plan.id));
       plan[field] = t.value;
       // a new year group moves the level to its usual one while nothing has been chosen yet
-      if (field === "yearGroup" && !plan.statements.length && YEAR_LEVEL[t.value]) plan.level = YEAR_LEVEL[t.value];
+      if (!plan.statements.length && YEAR_LEVEL[t.value]) plan.levels = [YEAR_LEVEL[t.value]];
       savePlanAndReport(plan);
       const y = window.scrollY;
       viewPlan(ix, plan.id);
@@ -1469,14 +1527,14 @@
         const multiLevel = new Set([...groups.values()].map((g) => g.level)).size > 1;
         holder = document.createElement("div");
         holder.className = "export-holder"; holder.setAttribute("aria-hidden", "true");
-        holder.innerHTML = `<table class="ss-table ${lvlClass(plan.level)}"><thead><tr><th>Strand</th><th>Sub-strand</th><th>Know</th><th>Do</th></tr></thead><tbody>${
-          [...groups.values()].map((g) => `<tr><th>${esc(g.strand.name)}</th><td><p>${esc(g.sub)}</p>${multiLevel ? `<p class="none">${LEVEL_NAME[g.level]} Level</p>` : ""}</td><td>${list(g.know)}</td><td>${list(g.do)}</td></tr>`).join("")
+        holder.innerHTML = `<table class="ss-table ${lvlClass(plan.levels[0])}"><thead><tr><th>Strand</th><th>Sub-strand</th><th>Know</th><th>Do</th></tr></thead><tbody>${
+          [...groups.values()].sort((x, y) => LEVELS.findIndex((l) => l.code === x.level) - LEVELS.findIndex((l) => l.code === y.level)).map((g) => `<tr><th>${esc(g.strand.name)}</th><td><p>${esc(g.sub)}</p>${multiLevel ? `<p class="none">${LEVEL_NAME[g.level]} Level</p>` : ""}</td><td>${list(g.know)}</td><td>${list(g.do)}</td></tr>`).join("")
           || `<tr><td colspan="4"><p class="none">No statements chosen yet.</p></td></tr>`}</tbody></table>`;
         main.appendChild(holder);
         table = holder.querySelector("table");
         title = plan.name || "Untitled plan";
         ratios = [0.18, 0.14, 0.34, 0.34];
-        sub = [`${areaName} · ${plan.yearGroup} · ${LEVEL_NAME[plan.level]} Level`, plan.description ? `What is planned: ${plan.description}` : ""];
+        sub = [`${areaName} · ${plan.yearGroup} · ${listNames(plan.levels.map((l) => LEVEL_NAME[l]))} Level`, plan.description ? `What is planned: ${plan.description}` : ""];
       } else {
         const scope = btn.closest("[data-export-scope]") || main;
         table = scope.querySelector("table");
@@ -1579,7 +1637,7 @@
     const exp = e.target.closest("button[data-export]");
     if (exp) { handleExport(exp); return; }
     if (parseHash().view === "planner" && auditClick(e)) return;
-    if (parseHash().view === "planner" && e.target.closest("[data-plan-new], [data-plan-del], [data-plan-dup], [data-plan-export], [data-plan-print], [data-pf], [data-unpick], [data-tray-link]")) {
+    if (parseHash().view === "planner" && e.target.closest("[data-plan-new], [data-plan-del], [data-plan-dup], [data-plan-export], [data-plan-print], [data-pf], [data-unpick], [data-tray-link], [data-plan-level], [data-plan-tab]")) {
       e.preventDefault();
       plannerClick(e);
       return;
