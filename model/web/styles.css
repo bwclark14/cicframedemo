@@ -949,3 +949,7 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
 .plan-layout { margin: 4px 0 8px; }
 .ss-table.plan-pick.layout-side .kd-col .pick-list li { padding: 1px 0; }
 .ss-table.plan-pick.layout-side .pick { padding: 2px 3px; gap: 5px; }
+
+/* Table headers: no underline on links (underline only on hover/focus, so they still read as links) */
+table th a, .ss-table thead th a { text-decoration: none; }
+table th a:hover, table th a:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
