@@ -666,3 +666,59 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
 .sub-col .none { color: var(--muted); font-style: italic; font-size: var(--step--1); }
 .sub-chip { font-size: var(--step--1); padding: 3px 10px 3px 8px; max-width: 100%; text-align: left; }
 .sub-grid.hovering .sub-chip.linked:not([aria-pressed="true"]) { border-color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, var(--surface)); }
+
+/* Cards: the whole card turns over ------------------------------------- */
+.kd-card { cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease; }
+.kd-card:hover { border-color: var(--ink); }
+.kd-card:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.kd-card .kd-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.kd-turn { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 0.6875rem; white-space: nowrap; }
+.kd-card:hover .kd-turn { color: var(--ink); }
+.kd-card details { cursor: default; }
+
+/* Notes link for one group, beside its statements ---------------------- */
+.g-notes { margin: 6px 0 2px; }
+.g-notes summary { cursor: pointer; display: inline-block; font-size: 0.75rem; font-weight: 600; color: var(--note);
+  padding: 1px 8px; border: 1px dashed color-mix(in srgb, var(--note) 55%, transparent); border-radius: 999px; list-style: none; }
+.g-notes summary::-webkit-details-marker { display: none; }
+.g-notes summary::before { content: "+ "; }
+.g-notes[open] summary::before { content: "− "; }
+.g-notes summary:hover { border-style: solid; }
+.g-notes .extra { margin-top: 6px; }
+.ss-table.condensed .g-notes summary { font-size: 0.6875rem; padding: 0 6px; }
+@media print { .g-notes > summary { display: none; } .g-notes > .extra { display: block; } }
+
+/* Lighter filters across the site --------------------------------------- */
+.filter, .kd-layout { gap: 4px 6px; margin: 0 0 6px; }
+.filter > span:first-child, .kd-layout > span:first-child, .picker-label {
+  font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); min-width: 5.5rem; }
+.filter button, .kd-layout button, .chip, .picker a {
+  background: transparent; border: 1px solid var(--rule); color: var(--muted); font-weight: 500;
+  padding: 2px 9px; font-size: 0.8125rem; line-height: 1.5; }
+.chip { padding-left: 7px; gap: 5px; }
+.chip::before { width: 10px; height: 10px; border-width: 1px; border-radius: 2px; }
+.filter button:hover, .kd-layout button:hover, .chip:hover, .picker a:hover { color: var(--ink); border-color: var(--rule-strong); }
+.filter button[aria-pressed="true"], .kd-layout button[aria-pressed="true"], .chip[aria-pressed="true"], .picker a[aria-current="true"] {
+  background: color-mix(in srgb, var(--focus) 10%, var(--surface)); color: var(--ink);
+  border-color: color-mix(in srgb, var(--focus) 45%, var(--rule)); font-weight: 600; }
+.chip[aria-pressed="true"]::before { background: var(--focus); border-color: var(--focus); color: var(--surface); font-size: 8px; line-height: 9px; }
+.picker { gap: 4px; margin-bottom: 8px; }
+.picker-bar { margin-bottom: 2px; }
+.picker-label { margin-bottom: 2px; }
+.picker-label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.whole-toggle .hint { font-size: 0.75rem; }
+.display-bar .sep { height: 16px; }
+/* sub-strand grid: thin level stripe instead of a filled heading */
+.sub-grid { border-color: var(--rule); background: transparent; }
+.sub-col { gap: 3px; padding: 0 6px 6px; }
+.sub-col-head { background: transparent; color: var(--ink); border-top: 3px solid var(--lvl); padding: 3px 6px; margin: 0 -6px 2px;
+  font-size: 0.75rem; border-radius: 0 !important; }
+.sub-chip { font-size: 0.75rem; padding: 1px 8px 1px 6px; }
+/* level staircase on By level: flatter */
+.stair button { background: color-mix(in srgb, var(--lvl) 18%, var(--surface)); font-size: var(--step--1); }
+@media (min-width: 1024px) {
+  .stair button:nth-child(1) { --h: 32px; } .stair button:nth-child(2) { --h: 36px; }
+  .stair button:nth-child(3) { --h: 40px; } .stair button:nth-child(4) { --h: 44px; }
+  .stair button:nth-child(5) { --h: 48px; }
+  .stair { margin-bottom: 10px; }
+}

@@ -263,37 +263,40 @@
     const showTags = labels.size > 1;
     const tagHtml = (g) => showTags ? `<p class="ss-tag ${g.origin}">${esc(g.label)}</p>` : "";
     const none = `<p class="none">None at this level.</p>`;
+    // Notes, Includes and Excludes belong to a group: each group gets its own Notes link beside its statements
+    const extrasOf = (g) => g.sts.filter((x) => EXTRA_KINDS.includes(x.kind));
+    const notesHtml = (g) => {
+      const ex = extrasOf(g);
+      return ex.length ? `<details class="g-notes"><summary>Notes${showTags ? ` for ${esc(g.label)}` : ""} (${ex.length})</summary>${ex.map((x) =>
+        `<div class="extra ${x.kind}" title="${esc(x.code)}"><h5>${EXTRA_LABEL[x.kind]}</h5>${md(x.body)}</div>`).join("")}</details>` : "";
+    };
+    const hasKD = (g) => of(g, "know").length || of(g, "do").length;
+    const shown = (c) => c.groups.filter((g) => hasKD(g) || extrasOf(g).length);
+    // the notes link sits with the last statements shown for the group
+    const lastKind = o.showKD === "k" ? "know" : "do";
 
     // stacked: one row per kind
-    const cell = (c, k) => c.groups.map((g) => {
+    const cell = (c, k) => shown(c).map((g) => {
       const list = listHtml(of(g, k));
-      return list ? tagHtml(g) + list : "";
+      const notes = k === lastKind ? notesHtml(g) : "";
+      return list || notes ? tagHtml(g) + list + notes : "";
     }).join("") || none;
-    // side by side: per group, Know and Do next to each other
-    const sideCell = (c) => c.groups.filter((g) => of(g, "know").length || of(g, "do").length).map((g) => `${tagHtml(g)}
+    // side by side: per group, Know and Do next to each other, then that group's notes
+    const sideCell = (c) => shown(c).map((g) => `${tagHtml(g)}${hasKD(g) ? `
       <div class="kd-pair"><div class="kd-col know"><p class="kd-h">Know</p>${listHtml(of(g, "know")) || none}</div>
-      <div class="kd-col do"><p class="kd-h">Do</p>${listHtml(of(g, "do")) || none}</div></div>`).join("") || none;
-    // cards: per group, Know on the front; select to turn it over to the Do statements
-    const cardCell = (c) => c.groups.filter((g) => of(g, "know").length || of(g, "do").length).map((g) => {
+      <div class="kd-col do"><p class="kd-h">Do</p>${listHtml(of(g, "do")) || none}</div></div>` : ""}${notesHtml(g)}`).join("") || none;
+    // cards: per group, Know on the front; select anywhere on the card to turn it over to Do
+    const cardCell = (c) => shown(c).map((g) => {
       const k = of(g, "know"), d = of(g, "do");
-      return `<div class="kd-card" data-face="know">
+      if (!k.length && !d.length) return tagHtml(g) + notesHtml(g);
+      return `<div class="kd-card" data-face="know" tabindex="0" role="group" aria-label="${esc(g.label)}: showing Know. Select to show Do.">
         ${tagHtml(g)}
-        <div class="face know"><p class="kd-h">Know</p>${listHtml(k) || none}
-          <button type="button" class="kd-flip" data-face-to="do">Show Do (${d.length})</button></div>
-        <div class="face do"><p class="kd-h">Do</p>${listHtml(d) || none}
-          <button type="button" class="kd-flip" data-face-to="know">Back to Know (${k.length})</button></div>
+        <div class="face know"><p class="kd-h">Know <span class="kd-turn">Click for Do (${d.length}) ↻</span></p>${listHtml(k) || none}</div>
+        <div class="face do"><p class="kd-h">Do <span class="kd-turn">Click for Know (${k.length}) ↻</span></p>${listHtml(d) || none}</div>
+        ${notesHtml(g)}
       </div>`;
     }).join("") || none;
 
-    const allExtras = (c) => c.groups.flatMap((g) => g.sts.filter((x) => EXTRA_KINDS.includes(x.kind)).map((x) => ({ x, g })));
-    const hasExtras = cols.some((c) => allExtras(c).length);
-    const extrasCell = (c) => {
-      const all = allExtras(c);
-      return all.length
-        ? `<details><summary>${all.length} note${all.length === 1 ? "" : "s"}</summary>${all.map(({ x, g }) =>
-            `<div class="extra ${x.kind}" title="${esc(x.code)}"><h5>${EXTRA_LABEL[x.kind]}${showTags ? ` <span class="ss-tag-inline">· ${esc(g.label)}</span>` : ""}</h5>${md(x.body)}</div>`).join("")}</details>`
-        : `<p class="none">None.</p>`;
-    };
     const undCell = (c) => {
       const tag = c.und.length > 1 || c.und.some((u) => u.label && u.label !== c.und[0].label);
       return c.und.map((u) => `${tag && u.label ? `<p class="ss-tag">${esc(u.label)}</p>` : ""}<p class="ss-u${c.undNote ? " inherited" : ""}">${esc(u.text)}</p>`).join("")
@@ -314,7 +317,6 @@
         <tbody>
           ${row("r-u", "Understand", undCell)}
           ${kdRows}
-          ${hasExtras ? row("r-n", "Notes", extrasCell) : ""}
         </tbody>
       </table></div></div>`;
   }
@@ -751,6 +753,16 @@
     }
   };
   main.addEventListener("mouseover", linkSubs);
+  function flipCard(card) {
+    const to = card.dataset.face === "know" ? "do" : "know";
+    card.dataset.face = to;
+    const label = card.getAttribute("aria-label").split(":")[0];
+    card.setAttribute("aria-label", `${label}: showing ${to === "do" ? "Do" : "Know"}. Select to show ${to === "do" ? "Know" : "Do"}.`);
+  }
+  main.addEventListener("keydown", (e) => {
+    const card = e.target.classList?.contains("kd-card") ? e.target : null;
+    if (card && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); flipCard(card); }
+  });
   main.addEventListener("focusin", linkSubs);
 
   main.addEventListener("click", (e) => {
@@ -766,12 +778,10 @@
       }
       return;
     }
-    // Flip a Know/Do card
-    const flip = e.target.closest("button.kd-flip");
-    if (flip) {
-      const card = flip.closest(".kd-card");
-      card.dataset.face = flip.dataset.faceTo;
-      card.querySelector(`.face.${flip.dataset.faceTo} .kd-flip`)?.focus();
+    // Turn a Know/Do card over: anywhere on the card, except its notes, links or selected text
+    const card = e.target.closest(".kd-card");
+    if (card && !e.target.closest("details, a, button") && !String(window.getSelection?.() || "")) {
+      flipCard(card);
       return;
     }
     const toggle = e.target.closest("button.pm-toggle");
