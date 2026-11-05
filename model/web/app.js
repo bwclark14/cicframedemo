@@ -994,9 +994,17 @@
     };
     const cell = (c, k) => c.groups.map((g) => { const l = list(g, k); return l ? (showTags ? `<p class="ss-tag ${g.origin}">${esc(g.label)}</p>` : "") + l : ""; }).join("")
       || `<p class="none">None at this level.</p>`;
-    const chips = (label, all, options, sel, key) => `<div class="filter multi-filter" role="group" aria-label="${esc(label)}"><span>${esc(label)}</span>
+    // Filters persist across levels: a selection that does not exist at this level stays visible, marked
+    const nameOf = { strands: (v) => ix.doc.strands.find((s) => s.slug === v)?.name,
+      subs: (v) => (v === "_whole" ? "Whole strand" : ix.subs.find((s) => s.slug === v)?.name) };
+    const chips = (label, all, options, sel, key) => {
+      const missing = sel.filter((v) => !options.some((o) => o.value === v) && nameOf[key](v));
+      return `<div class="filter multi-filter" role="group" aria-label="${esc(label)}"><span>${esc(label)}</span>
       <button type="button" aria-pressed="${!sel.length}" data-pf="${key}" data-pf-value="">${esc(all)}</button>
-      ${options.map((o) => `<button type="button" class="chip" aria-pressed="${sel.includes(o.value)}" data-pf="${key}" data-pf-value="${esc(o.value)}">${esc(o.label)}</button>`).join("")}</div>`;
+      ${options.map((o) => `<button type="button" class="chip" aria-pressed="${sel.includes(o.value)}" data-pf="${key}" data-pf-value="${esc(o.value)}">${esc(o.label)}</button>`).join("")}
+      ${missing.map((v) => `<button type="button" class="chip na" aria-pressed="true" data-pf="${key}" data-pf-value="${esc(v)}"
+        title="Still selected, but not at ${LEVEL_NAME[level]} Level. Select to remove it.">${esc(nameOf[key](v))} <small>not at this level</small></button>`).join("")}</div>`;
+    };
     return `
       ${strands.length > 1 ? chips("Strands", "All strands", strands.map((s) => ({ value: s.slug, label: s.name })), planUI.strands, "strands") : ""}
       ${subOptions.length > 1 ? chips("Sub-strands", "All", subOptions, planUI.subs, "subs") : ""}
@@ -1007,7 +1015,8 @@
             <tr class="r-u"><th scope="row">Understand</th>${cols.map((c) => `<td>${c.und.map((u) => `<p class="ss-u">${esc(u.text)}</p>`).join("") || `<p class="none">—</p>`}</td>`).join("")}</tr>
             <tr class="r-k"><th scope="row">Know</th>${cols.map((c) => `<td>${cell(c, "know")}</td>`).join("")}</tr>
             <tr class="r-d"><th scope="row">Do</th>${cols.map((c) => `<td>${cell(c, "do")}</td>`).join("")}</tr>
-          </tbody></table></div>` : `<p class="empty">Nothing matches these filters at ${LEVEL_NAME[level]} Level.</p>`}`;
+          </tbody></table></div>` : `<p class="empty">Nothing matches these filters at ${LEVEL_NAME[level]} Level.
+            <button type="button" class="link-btn" data-pf-clear>Clear filters</button></p>`}`;
   }
 
   function planSummaryHtml(ix, plan) {
@@ -1042,7 +1051,8 @@
         <p class="page-links"><a href="${href(area, "planner")}">Back to all plans</a></p></div>`;
       return;
     }
-    if (planUI.id !== plan.id || !plan.levels.includes(planUI.level)) Object.assign(planUI, { id: plan.id, level: plan.levels[0], strands: [], subs: [] });
+    if (planUI.id !== plan.id) Object.assign(planUI, { id: plan.id, level: plan.levels[0], strands: [], subs: [] });
+    else if (!plan.levels.includes(planUI.level)) planUI.level = plan.levels[0];      // filters stay as they are
     const cov = planCoverage(ix, plan);
     const suggested = YEAR_LEVEL[plan.yearGroup];
     main.innerHTML = `
@@ -1081,7 +1091,7 @@
           <div class="plan-tabs" role="tablist" aria-label="Level to choose statements from">${plan.levels.map((l) =>
             `<button type="button" role="tab" class="${lvlClass(l)}" aria-selected="${l === planUI.level}" data-plan-tab="${l}">${LEVEL_NAME[l]} Level
               <span class="tab-n" data-tab-count="${l}">${levelCount(ix, plan, l)}</span></button>`).join("")}
-            <span class="tab-hint">${plan.levels.length > 1 ? "Switch level to add its statements; the plan keeps them all." : "Add more levels under Levels above to plan across levels."}</span></div>
+            <span class="tab-hint">${plan.levels.length > 1 ? "Switch level to add its statements; the plan keeps them all and your filters carry over." : "Add more levels under Levels above to plan across levels."}</span></div>
           <p class="section-sub">Tick the Know and Do statements this plan covers at ${LEVEL_NAME[planUI.level]} Level. Each change is added to the plan and saved straight away.</p>
           <div data-plan-picker>${planPickerHtml(ix, plan)}</div>
         </section>
@@ -1178,7 +1188,7 @@
         plan.statements = plan.statements.filter((c) => ix.statements.get(c)?.block.level !== code);
       } else {
         plan.levels = [...plan.levels, code];
-        planUI.level = code; planUI.strands = []; planUI.subs = [];   // go straight to the new level
+        planUI.level = code;                    // go straight to the new level; filters stay as they are
       }
       savePlanAndReport(plan);
       const y = window.scrollY;
@@ -1191,7 +1201,7 @@
     if (tab && r.a) {
       const plan = getPlan(r.a);
       if (!plan || tab.dataset.planTab === planUI.level) return true;
-      Object.assign(planUI, { level: tab.dataset.planTab, strands: [], subs: [] });
+      planUI.level = tab.dataset.planTab;        // strand and sub-strand filters carry over
       const sec = main.querySelector(".plan-picker");
       sec.className = `plan-picker level-section ${lvlClass(planUI.level)}`;
       sec.querySelector(".section-title").innerHTML = `${levelMark(planUI.level)}Choose statements`;
@@ -1205,6 +1215,12 @@
       aside?.scrollIntoView({ behavior: "smooth", block: "start" });
       aside?.querySelector("h2")?.setAttribute("tabindex", "-1");
       aside?.querySelector("h2")?.focus({ preventScroll: true });
+      return true;
+    }
+    if (t.closest("[data-pf-clear]") && r.a) {
+      planUI.strands = []; planUI.subs = [];
+      const plan = getPlan(r.a);
+      if (plan) main.querySelector("[data-plan-picker]").innerHTML = planPickerHtml(ix, plan);
       return true;
     }
     const pf = t.closest("[data-pf]");
@@ -1637,7 +1653,7 @@
     const exp = e.target.closest("button[data-export]");
     if (exp) { handleExport(exp); return; }
     if (parseHash().view === "planner" && auditClick(e)) return;
-    if (parseHash().view === "planner" && e.target.closest("[data-plan-new], [data-plan-del], [data-plan-dup], [data-plan-export], [data-plan-print], [data-pf], [data-unpick], [data-tray-link], [data-plan-level], [data-plan-tab]")) {
+    if (parseHash().view === "planner" && e.target.closest("[data-plan-new], [data-plan-del], [data-plan-dup], [data-plan-export], [data-plan-print], [data-pf], [data-unpick], [data-tray-link], [data-plan-level], [data-plan-tab], [data-pf-clear]")) {
       e.preventDefault();
       plannerClick(e);
       return;

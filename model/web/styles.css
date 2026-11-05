@@ -943,3 +943,6 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
 .lvl-pills { display: inline-flex; flex-wrap: wrap; gap: 3px; }
 .h-note { display: block; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 0.6875rem; }
 @media (max-width: 860px) { .plan-fields { grid-template-columns: 1fr 1fr; } .fld-levels { grid-column: 1 / -1; } .tab-hint { margin-left: 0; width: 100%; } }
+.chip.na { border-style: dashed; opacity: 0.8; }
+.chip.na small { font-weight: 400; color: var(--muted); margin-left: 3px; }
+.empty .link-btn { margin-left: 8px; }
