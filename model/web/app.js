@@ -736,6 +736,160 @@
     return { strands: ordered, levels: LEVELS.filter((l) => levels.has(l.code)).map((l) => l.code), know, do: doo, missing };
   }
 
+  // ---------------------------------------------------------------- planner: master dashboard and coverage audit
+  const auditUI = { kinds: "kd", years: [], cell: null, open: new Set() };   // open: strands showing their sub-strands      // what the audit counts, which plans, the open cell
+
+  /** Coverage of every Know/Do statement by the given plans, grouped strand -> row (whole strand / sub-strand) -> level. */
+  function coverageModel(ix, plans) {
+    const kinds = auditUI.kinds === "k" ? ["know"] : auditUI.kinds === "d" ? ["do"] : ["know", "do"];
+    const coveredBy = new Map();                         // code -> [plan]
+    for (const p of plans) for (const c of p.statements || []) {
+      if (!coveredBy.has(c)) coveredBy.set(c, []);
+      coveredBy.get(c).push(p);
+    }
+    const rows = new Map();                              // strand -> Map(rowKey -> {key, name, cells: {level: {codes, covered, plans}}})
+    for (const [code, h] of ix.statements) {
+      if (!kinds.includes(h.s.kind)) continue;
+      const key = h.depth > 0 ? h.node.slug : "_whole";
+      const name = h.depth > 0 ? h.node.name : "Whole strand";
+      if (!rows.has(h.strand)) rows.set(h.strand, new Map());
+      const m = rows.get(h.strand);
+      if (!m.has(key)) m.set(key, { key, name, cells: {} });
+      const cell = (m.get(key).cells[h.block.level] ||= { codes: [], covered: 0, plans: new Set() });
+      cell.codes.push(code);
+      const by = coveredBy.get(code);
+      if (by) { cell.covered++; by.forEach((p) => cell.plans.add(p.id)); }
+    }
+    let total = 0, covered = 0, gaps = 0;
+    const strands = ix.doc.strands.filter((s) => rows.has(s)).map((s) => {
+      const subRows = [...rows.get(s).values()].sort((a, b) => (a.key === "_whole" ? -1 : b.key === "_whole" ? 1 : 0));
+      const agg = {};
+      for (const r of subRows) for (const [lv, c] of Object.entries(r.cells)) {
+        const a = (agg[lv] ||= { codes: [], covered: 0, plans: new Set() });
+        a.codes.push(...c.codes); a.covered += c.covered; c.plans.forEach((x) => a.plans.add(x));
+        total += c.codes.length; covered += c.covered; if (!c.covered) gaps++;
+      }
+      return { strand: s, cells: agg, rows: subRows };
+    });
+    return { strands, total, covered, gaps, coveredBy };
+  }
+
+  function masterDashboardHtml(ix, allPlans) {
+    const plans = auditUI.years.length ? allPlans.filter((p) => auditUI.years.includes(p.yearGroup)) : allPlans;
+    const model = coverageModel(ix, plans);
+    const pct = (a, b) => (b ? Math.round((100 * a) / b) : 0);
+    // a percentage for display: never "0%" when something is covered, never "100%" when something is not
+    const pctText = (a, b) => { const v = b ? (100 * a) / b : 0; return a && v < 1 ? "<1%" : a < b && v > 99 ? ">99%" : `${Math.round(v)}%`; };
+    const levels = LEVELS.filter((l) => model.strands.some((s) => s.cells[l.code]));
+
+    // summary: stat tiles and two count lists
+    const byYear = YEAR_GROUPS.map((y) => [y, allPlans.filter((p) => p.yearGroup === y).length]);
+    const byLevel = LEVELS.map((l) => [l, allPlans.filter((p) => p.level === l.code).length]);
+    const maxY = Math.max(1, ...byYear.map(([, n]) => n)), maxL = Math.max(1, ...byLevel.map(([, n]) => n));
+    const bars = (items, max, label) => `<ul class="count-bars">${items.map(([name, n, cls]) =>
+      `<li title="${esc(name)}: ${n} plan${n === 1 ? "" : "s"}"><span class="cb-label">${esc(name)}</span>
+        <span class="cb-track"><span class="cb-fill ${cls || ""}" style="width:${(100 * n) / max}%"></span></span>
+        <span class="cb-n">${n}</span></li>`).join("")}</ul>`;
+    const yearsPlanned = byYear.filter(([, n]) => n).length;
+
+    // audit matrix
+    const meter = (c, scope) => {
+      if (!c) return `<td class="au-na" aria-label="Not at this level"></td>`;
+      const p = pct(c.covered, c.codes.length);
+      const sel = auditUI.cell === scope;
+      return `<td class="au-cell${c.covered ? "" : " gap"}${sel ? " selected" : ""}">
+        <button type="button" data-audit-cell="${esc(scope)}" aria-pressed="${sel}"
+          title="${c.covered} of ${c.codes.length} statements covered by ${c.plans.size} plan${c.plans.size === 1 ? "" : "s"}">
+          <span class="au-top"><span class="au-num">${c.covered}<span class="au-of"> / ${c.codes.length}</span></span>
+            ${c.covered ? `<span class="au-pct">${pctText(c.covered, c.codes.length)} · ${c.plans.size} plan${c.plans.size === 1 ? "" : "s"}</span>` : `<span class="au-gap">Gap</span>`}</span>
+          <span class="au-meter"><span style="width:${p}%"></span></span>
+        </button></td>`;
+    };
+    const hasSubRows = (s) => s.rows.length > 1 || s.rows[0]?.key !== "_whole";
+    const expandable = model.strands.filter(hasSubRows).map((s) => s.strand.slug);
+    const matrix = `<table class="audit">
+      <thead><tr><th scope="col" class="au-corner">Strand / sub-strand</th>${levels.map((l) => `<th scope="col" class="${lvlClass(l.code)}">${l.name}</th>`).join("")}</tr></thead>
+      <tbody>${model.strands.map((s) => `
+        <tr class="au-strand"><th scope="row">${hasSubRows(s)
+          ? `<button type="button" class="au-toggle" data-audit-open="${esc(s.strand.slug)}" aria-expanded="${auditUI.open.has(s.strand.slug)}">${esc(s.strand.name)}
+              <small>${s.rows.filter((r) => r.key !== "_whole").length} sub-strands</small></button>` : esc(s.strand.name)}</th>${levels.map((l) => meter(s.cells[l.code], `${s.strand.slug}||${l.code}`)).join("")}</tr>
+        ${hasSubRows(s) && auditUI.open.has(s.strand.slug) ? s.rows.map((r) => `<tr class="au-sub"><th scope="row">${esc(r.name)}</th>${levels.map((l) =>
+          meter(r.cells[l.code], `${s.strand.slug}|${r.key}|${l.code}`)).join("")}</tr>`).join("") : ""}`).join("")}
+      </tbody></table>`;
+
+    // drill-down for the selected cell
+    let detail = "";
+    if (auditUI.cell) {
+      // scope is "strand|row|level"; an empty row means the whole strand (all its sub-strands together)
+      const [sSlug, rKey, lv] = auditUI.cell.split("|");
+      const s = model.strands.find((x) => x.strand.slug === sSlug);
+      const c = s && (rKey ? s.rows.find((r) => r.key === rKey)?.cells[lv] : s.cells[lv]);
+      if (c) {
+        const name = rKey ? s.rows.find((r) => r.key === rKey).name : "all sub-strands";
+        const items = c.codes.map((code) => ({ h: ix.statements.get(code), by: model.coveredBy.get(code) || [] }))
+          .sort((a, b) => (a.by.length ? 1 : 0) - (b.by.length ? 1 : 0));
+        detail = `<div class="au-detail" aria-live="polite">
+          <div class="au-detail-head"><h3>${esc(s.strand.name)} · ${esc(name)} · ${LEVEL_NAME[lv]} Level</h3>
+            <span>${c.covered} of ${c.codes.length} covered</span>
+            <button type="button" class="link-btn" data-audit-close>Close</button></div>
+          <ul class="au-list">${items.map(({ h, by }) => `<li class="${by.length ? "done" : "todo"}">
+            <span class="au-mark" aria-hidden="true">${by.length ? "✓" : "○"}</span>
+            <span class="au-kind ${h.s.kind}">${h.s.kind === "know" ? "Know" : "Do"}</span>
+            <span class="au-text">${inlineMd(h.s.body)}${!rKey && h.depth > 0 ? ` <small class="plan-also">${esc(h.node.name)}</small>` : ""}</span>
+            <span class="au-by">${by.length ? by.map((p) => `<a href="${href(state.area, "planner", p.id)}">${esc(p.name || "Untitled plan")}</a>`).join(", ") : `<em>Not yet planned</em>`}</span>
+          </li>`).join("")}</ul></div>`;
+      }
+    }
+
+    const yearOpts = YEAR_GROUPS.filter((y) => allPlans.some((p) => p.yearGroup === y));
+    return `<section class="master" aria-labelledby="master-h">
+      <h2 class="block-title" id="master-h">Overview of all plans</h2>
+      <div class="tiles">
+        <div class="tile"><span class="tile-n">${allPlans.length}</span><span class="tile-l">plan${allPlans.length === 1 ? "" : "s"}</span></div>
+        <div class="tile"><span class="tile-n">${yearsPlanned}<span class="tile-of"> / ${YEAR_GROUPS.length}</span></span><span class="tile-l">year groups with a plan</span></div>
+        <div class="tile"><span class="tile-n">${pctText(model.covered, model.total)}</span><span class="tile-l">of ${auditUI.kinds === "k" ? "Know" : auditUI.kinds === "d" ? "Do" : "Know and Do"} statements covered<br><small>${model.covered} of ${model.total}${auditUI.years.length ? `, ${auditUI.years.join(", ")} plans` : ""}</small></span></div>
+        <div class="tile"><span class="tile-n">${model.gaps}</span><span class="tile-l">sub-strand × level gaps<br><small>no statements planned</small></span></div>
+      </div>
+      <div class="dist">
+        <div><h3>Plans by year group</h3>${bars(byYear.map(([y, n]) => [y, n]), maxY)}</div>
+        <div><h3>Plans by level</h3>${bars(byLevel.map(([l, n]) => [`${l.name} Level`, n, lvlClass(l.code)]), maxL)}</div>
+      </div>
+      <h2 class="block-title">Coverage audit</h2>
+      <p class="block-intro">How many of the framework's statements at each level are in at least one plan. Select a cell to see which statements are covered, by which plans, and what is still to plan.</p>
+      <div class="filter" role="group" aria-label="Statements counted"><span>Count</span>
+        ${[["kd", "Know and Do"], ["k", "Know only"], ["d", "Do only"]].map(([v, l]) => `<button type="button" aria-pressed="${auditUI.kinds === v}" data-audit-kinds="${v}">${l}</button>`).join("")}</div>
+      ${yearOpts.length > 1 ? `<div class="filter" role="group" aria-label="Plans counted"><span>Plans</span>
+        <button type="button" aria-pressed="${!auditUI.years.length}" data-audit-year="">All year groups</button>
+        ${yearOpts.map((y) => `<button type="button" class="chip" aria-pressed="${auditUI.years.includes(y)}" data-audit-year="${y}">${y}</button>`).join("")}</div>` : ""}
+      ${expandable.length ? `<div class="au-tools"><button type="button" class="link-btn" data-audit-all="open">Show all sub-strands</button>
+        <button type="button" class="link-btn" data-audit-all="close">Hide all</button></div>` : ""}
+      <div class="audit-wrap" tabindex="0" role="region" aria-label="Coverage audit">${matrix}</div>
+      ${detail}
+    </section>`;
+  }
+
+  function auditClick(e) {
+    const t = e.target;
+    const cell = t.closest("[data-audit-cell]"), kinds = t.closest("[data-audit-kinds]"), year = t.closest("[data-audit-year]");
+    const open = t.closest("[data-audit-open]"), all = t.closest("[data-audit-all]");
+    if (!cell && !kinds && !year && !open && !all && !t.closest("[data-audit-close]")) return false;
+    if (open) { const k = open.dataset.auditOpen; if (auditUI.open.has(k)) auditUI.open.delete(k); else auditUI.open.add(k); }
+    else if (all) auditUI.open = all.dataset.auditAll === "open"
+      ? new Set([...main.querySelectorAll("[data-audit-open]")].map((b) => b.dataset.auditOpen)) : new Set();
+    else if (cell) auditUI.cell = auditUI.cell === cell.dataset.auditCell ? null : cell.dataset.auditCell;
+    else if (kinds) auditUI.kinds = kinds.dataset.auditKinds;
+    else if (year) { const v = year.dataset.auditYear; auditUI.years = !v ? [] : auditUI.years.includes(v) ? auditUI.years.filter((x) => x !== v) : [...auditUI.years, v]; }
+    else auditUI.cell = null;
+    const ix = state.areas[state.area];
+    const box = main.querySelector("[data-master]");
+    if (ix && box) {
+      box.innerHTML = masterDashboardHtml(ix, loadPlans().filter((p) => p.area === state.area));
+      if (cell && auditUI.cell) box.querySelector(".au-detail")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      if (open) box.querySelector(`[data-audit-open="${CSS.escape(open.dataset.auditOpen)}"]`)?.focus();
+    }
+    return true;
+  }
+
   function viewPlanner(ix) {
     const area = state.area;
     const plans = loadPlans().filter((p) => p.area === area).sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
@@ -767,7 +921,9 @@
         <label class="btn">Import plans<input type="file" accept="application/json,.json" data-plan-import hidden></label>
         <span class="plan-status" role="status"></span>
       </div>
-      ${plans.length ? `<div class="plan-table-wrap"><table class="plan-table">
+      ${plans.length ? `<div data-master>${masterDashboardHtml(ix, plans)}</div>
+      <h2 class="block-title plans-h">All plans</h2>
+      <div class="plan-table-wrap"><table class="plan-table">
         <thead><tr><th scope="col">Plan</th><th scope="col">Year group</th><th scope="col">Level</th>
           <th scope="col">Strands and sub-strands covered</th><th scope="col" class="num">Know</th><th scope="col" class="num">Do</th>
           <th scope="col">Updated</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
@@ -1092,6 +1248,7 @@
   main.addEventListener("focusin", linkSubs);
 
   main.addEventListener("click", (e) => {
+    if (parseHash().view === "planner" && auditClick(e)) return;
     if (parseHash().view === "planner" && e.target.closest("[data-plan-new], [data-plan-del], [data-plan-dup], [data-plan-export], [data-plan-print], [data-pf], [data-unpick]")) {
       plannerClick(e);
       return;

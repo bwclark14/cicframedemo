@@ -794,3 +794,74 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
   .fld input, .fld select, .fld textarea { border: 0; padding: 0; resize: none; }
   .plan-summary { border: 0; padding: 0; }
 }
+
+/* Planner: master dashboard ---------------------------------------------- */
+.master { margin-bottom: 18px; }
+.master .block-title { font-size: var(--step-1); margin: 14px 0 6px; }
+.master .block-intro { color: var(--muted); font-size: var(--step--1); margin-bottom: 8px; max-width: 90ch; }
+.plans-h { font-size: var(--step-1); margin: 18px 0 8px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.tile { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; }
+.tile-n { font-size: var(--step-3); font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tile-of { font-size: var(--step-0); font-weight: 600; color: var(--muted); }
+.tile-l { color: var(--muted); font-size: var(--step--1); line-height: 1.3; }
+.tile-l small { font-size: 0.6875rem; }
+.dist { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; margin-top: 8px; }
+.dist > div { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 10px 14px; }
+.dist h3 { font-size: var(--step--1); color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.count-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: var(--step--1); }
+.count-bars li { display: grid; grid-template-columns: 7.5rem 1fr 2rem; align-items: center; gap: 8px; }
+.cb-track { height: 10px; background: var(--paper); border-radius: 0 4px 4px 0; overflow: hidden; }
+.cb-fill { display: block; height: 100%; background: var(--l-third); border-radius: 0 4px 4px 0; min-width: 0; }
+.cb-fill[class*="lvl-"] { background: var(--lvl); }
+.cb-n { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
+
+.audit-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); }
+.audit { border-collapse: collapse; width: 100%; min-width: 760px; font-size: var(--step--1); }
+.audit th, .audit td { border-bottom: 1px solid var(--rule); text-align: left; vertical-align: middle; }
+.audit thead th { padding: 6px 8px; font-size: 0.75rem; border-top: 3px solid var(--lvl, var(--rule)); background: var(--paper); }
+.audit .au-corner { color: var(--muted); font-weight: 600; width: 16rem; }
+.audit tbody th { padding: 4px 8px; font-weight: 500; }
+.audit .au-strand th { font-weight: 700; }
+.audit .au-strand > * { border-top: 2px solid var(--rule-strong); }
+.audit .au-sub th { padding-left: 22px; color: var(--muted); }
+.audit td { padding: 2px; }
+.au-na { background: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--rule) 60%, transparent) 5px 6px); }
+.au-cell button { appearance: none; width: 100%; border: 1px solid transparent; background: transparent; border-radius: 4px; padding: 4px 6px;
+  display: grid; gap: 2px; text-align: left; cursor: pointer; color: var(--ink); font: inherit; }
+.au-cell button:hover { border-color: var(--rule-strong); }
+.au-cell.selected button { border-color: var(--focus); background: color-mix(in srgb, var(--focus) 8%, var(--surface)); }
+.au-top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.au-num { font-weight: 700; font-variant-numeric: tabular-nums; }
+.au-of { font-weight: 400; color: var(--muted); }
+.au-pct { color: var(--muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.au-gap { font-size: 0.6875rem; font-weight: 700; color: var(--excludes); border: 1px dashed var(--excludes); border-radius: 999px; padding: 0 6px; }
+.au-meter { height: 6px; background: var(--paper); border-radius: 3px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--rule); }
+.au-meter > span { display: block; height: 100%; background: var(--l-third); border-radius: 0 3px 3px 0; }
+.au-plans { font-size: 0.6875rem; color: var(--muted); }
+.au-cell.gap button { border: 1px dashed color-mix(in srgb, var(--excludes) 45%, transparent); }
+.au-detail { margin-top: 10px; background: var(--surface); border: 1px solid var(--focus); border-radius: var(--radius); padding: 10px 14px; }
+.au-detail-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 6px; }
+.au-detail-head h3 { font-size: var(--step-0); }
+.au-detail-head span { color: var(--muted); font-size: var(--step--1); }
+.au-detail-head .link-btn { margin-left: auto; }
+.au-list { list-style: none; margin: 0; padding: 0; font-size: var(--step--1); }
+.au-list li { display: grid; grid-template-columns: 1.2rem 3rem minmax(0, 1fr) minmax(140px, 0.6fr); gap: 8px; padding: 5px 0; border-top: 1px solid var(--rule); align-items: baseline; }
+.au-list li.todo .au-mark { color: var(--excludes); }
+.au-list li.done .au-mark { color: var(--do); font-weight: 700; }
+.au-kind { font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; }
+.au-kind.know { color: var(--know); } .au-kind.do { color: var(--do); }
+.au-by { color: var(--muted); }
+.au-by em { color: var(--excludes); font-style: normal; font-weight: 600; }
+@media (max-width: 700px) {
+  .au-list li { grid-template-columns: 1.2rem 3rem minmax(0, 1fr); }
+  .au-by { grid-column: 3; }
+}
+.au-tools { display: flex; gap: 14px; margin: 0 0 4px; }
+.au-toggle { appearance: none; border: 0; background: none; padding: 0 0 0 16px; font: inherit; font-weight: 700; color: var(--ink);
+  cursor: pointer; text-align: left; position: relative; }
+.au-toggle::before { content: "▸"; position: absolute; left: 0; top: 0; color: var(--muted); transition: transform 120ms ease; }
+.au-toggle[aria-expanded="true"]::before { transform: rotate(90deg); }
+.au-toggle small { display: block; font-weight: 400; color: var(--muted); font-size: 0.6875rem; }
+.au-toggle:hover { text-decoration: underline; }
+.au-cell button { padding: 3px 6px; }
