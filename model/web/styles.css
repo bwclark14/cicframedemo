@@ -510,3 +510,7 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
   .ss-table { min-width: 0; }
   .ss-table thead th, .ss-table tbody th { position: static; }
 }
+
+.whole-toggle { align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.whole-toggle .hint { color: var(--muted); font-size: var(--step--1); flex: 1 1 260px; }
+.group-title .hint { font-size: var(--step--1); font-weight: 400; color: var(--muted); margin-left: 8px; }
