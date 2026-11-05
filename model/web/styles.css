@@ -905,3 +905,18 @@ body.wide main, body.wide .site-inner, body.wide .site-foot { max-width: 1560px;
   .plan-tray > span:first-child { white-space: nowrap; }
 }
 @media print { .plan-work { display: block; } .plan-work > .plan-summary { position: static; max-height: none; overflow: visible; } .plan-tray { display: none !important; } }
+
+/* Export to Word ---------------------------------------------------------- */
+.kd-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; margin: 0 0 8px; }
+.kd-bar .kd-layout { margin: 0; }
+.kd-bar > .export-btn:only-child { margin-left: auto; }
+.export-btn { appearance: none; border: 1px solid var(--rule); background: transparent; color: var(--muted); border-radius: 999px;
+  padding: 2px 10px; font: inherit; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.export-btn:hover { color: var(--ink); border-color: var(--rule-strong); }
+.export-btn:disabled { opacity: 0.7; cursor: progress; }
+.table-tools { display: flex; justify-content: flex-end; margin: 0 0 6px; }
+.table-head { margin-top: 6px; }
+.table-head > .plans-h { display: inline-block; margin-right: 12px; }
+.plan-side-actions .export-btn { border-radius: var(--radius); padding: 5px 10px; }
+.export-holder { position: absolute; left: -100000px; top: 0; width: 1400px; }
+@media print { .export-btn { display: none !important; } }

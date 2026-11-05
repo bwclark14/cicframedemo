@@ -315,8 +315,8 @@
       : `${o.showKD !== "d" ? row("r-k", "Know", (c) => cell(c, "know")) : ""}${o.showKD !== "k" ? row("r-d", "Do", (c) => cell(c, "do")) : ""}`;
 
     return `<div class="kd-block" id="${id}">
-      ${both ? `<div class="kd-layout" role="group" aria-label="Layout of Know and Do"><span>Layout</span>${KD_LAYOUTS.map(([v, label]) =>
-        `<button type="button" aria-pressed="${layout === v}" data-kd-layout="${v}">${label}</button>`).join("")}</div>` : ""}
+      <div class="kd-bar">${both ? `<div class="kd-layout" role="group" aria-label="Layout of Know and Do"><span>Layout</span>${KD_LAYOUTS.map(([v, label]) =>
+        `<button type="button" aria-pressed="${layout === v}" data-kd-layout="${v}">${label}</button>`).join("")}</div>` : ""}${exportBtn("kd")}</div>
       <div class="ss-wrap" tabindex="0" role="region" aria-label="${esc(opts.label || "Know and Do table")}">
       <table class="ss-table layout-${layout} ${opts.tableClass || ""}${o.condensed ? " condensed" : ""}" style="--cols:${cols.length}">
         <thead><tr><td class="corner"></td>${cols.map((c) => `<th scope="col" class="${c.headClass || ""}"${c.id ? ` id="${c.id}"` : ""}>${c.head}</th>`).join("")}</tr></thead>
@@ -576,6 +576,7 @@
     main.innerHTML = `
       <div class="page-head"><h1>Understanding at each level</h1>
         <p>The Understand statement for every strand at every level. Select a sub-strand to see its Know and Do statements at that level.</p></div>
+      <div class="table-tools">${exportBtn("matrix")}</div>
       <div class="matrix-wrap">
         <table class="matrix">
           <caption class="visually-hidden">${esc(ix.doc.name)}: Understand statements by strand and level</caption>
@@ -880,7 +881,8 @@
         ${yearOpts.map((y) => `<button type="button" class="chip" aria-pressed="${auditUI.years.includes(y)}" data-audit-year="${y}">${y}</button>`).join("")}</div>` : ""}
       ${expandable.length ? `<div class="au-tools"><button type="button" class="link-btn" data-audit-all="open">Show all sub-strands</button>
         <button type="button" class="link-btn" data-audit-all="close">Hide all</button></div>` : ""}
-      <div class="audit-wrap" tabindex="0" role="region" aria-label="Coverage audit">${matrix}</div>
+      <div data-export-scope><div class="table-tools">${exportBtn("audit", "Export audit to Word", "Coverage audit")}</div>
+      <div class="audit-wrap" tabindex="0" role="region" aria-label="Coverage audit">${matrix}</div></div>
       ${detail}
       </div>
     </section>`;
@@ -939,7 +941,7 @@
           : `<span class="none">Nothing selected yet</span>`}</td>
         <td class="num">${cov.know}</td><td class="num">${cov.do}</td>
         <td>${fmtDate(p.updated)}</td>
-        <td class="plan-actions"><a href="${href(area, "planner", p.id)}">Edit</a>
+        <td class="plan-actions" data-export-skip><a href="${href(area, "planner", p.id)}">Edit</a>
           <button type="button" class="link-btn" data-plan-dup="${esc(p.id)}">Duplicate</button>
           <button type="button" class="link-btn danger" data-plan-del="${esc(p.id)}">Delete</button></td>
       </tr>`;
@@ -953,12 +955,12 @@
         <label class="btn">Import plans<input type="file" accept="application/json,.json" data-plan-import hidden></label>
         <span class="plan-status" role="status"></span>
       </div>
-      ${plans.length ? `<h2 class="block-title plans-h">All plans</h2>
+      ${plans.length ? `<div class="table-head" data-export-scope><h2 class="block-title plans-h">All plans</h2>${exportBtn("plans", "Export to Word", "Plans")}
       <div class="plan-table-wrap"><table class="plan-table">
         <thead><tr><th scope="col">Plan</th><th scope="col">Year group</th><th scope="col">Level</th>
           <th scope="col">Strands and sub-strands covered</th><th scope="col" class="num">Know</th><th scope="col" class="num">Do</th>
-          <th scope="col">Updated</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
-        <tbody>${rows}</tbody></table></div>
+          <th scope="col">Updated</th><th scope="col" data-export-skip><span class="visually-hidden">Actions</span></th></tr></thead>
+        <tbody>${rows}</tbody></table></div></div>
       <div data-master>${masterDashboardHtml(ix, plans)}</div>`
         : `<div class="plan-empty"><p>No plans yet for ${esc(ix.doc.name)}.</p><p>Select <strong>New plan</strong> to start one.</p></div>`}`;
     document.title = `Planner · ${ix.doc.name} · Curriculum Explorer`;
@@ -1047,6 +1049,7 @@
           <p class="plan-count"><strong data-count="know">${cov.know}</strong> Know · <strong data-count="do">${cov.do}</strong> Do</p>
           <div class="plan-side-actions">
             <button type="button" class="btn" data-plan-print>Print</button>
+            ${exportBtn("plan", "Export plan to Word")}
             <button type="button" class="btn danger" data-plan-del="${esc(plan.id)}">Delete plan</button>
           </div>
         </div>
@@ -1242,6 +1245,256 @@
   main.addEventListener("change", plannerChange);
   main.addEventListener("input", plannerInput);
 
+  // ---------------------------------------------------------------- export to Word (.docx)
+  // Any table on the site can be saved as a formatted Word document. The docx library is loaded on first use.
+  const DOCX_SRC = "https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js";
+  const DOCX_SRI = "sha384-4xaIisuLEy2lo2HkB2C4rEf7v8jbTb2kuogX6TkuEt9feTWKBSFSOzsqNNbV+sKh";
+  let docxLoading = null;
+  function loadDocx() {
+    if (window.docx) return Promise.resolve(window.docx);
+    docxLoading ||= new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = DOCX_SRC; s.integrity = DOCX_SRI; s.crossOrigin = "anonymous";
+      s.onload = () => (window.docx ? resolve(window.docx) : reject(new Error("Word export library did not load")));
+      s.onerror = () => { docxLoading = null; reject(new Error("Could not load the Word export library. Check your internet connection and try again.")); };
+      document.head.appendChild(s);
+    });
+    return docxLoading;
+  }
+  const exportBtn = (kind, label = "Export to Word", title = "") =>
+    `<button type="button" class="export-btn" data-export="${kind}"${title ? ` data-export-title="${esc(title)}"` : ""}><span aria-hidden="true">⇩</span> ${label}</button>`;
+
+  function rgbToHex(c) {
+    const m = String(c).match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+))?/);
+    if (!m || (m[4] !== undefined && Number(m[4]) === 0)) return null;
+    return [m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, "0")).join("").toUpperCase();
+  }
+  // Exported documents are always light: use the light theme's colours for headers, whatever the screen shows
+  function lightColours(el) {
+    const root = document.documentElement, was = root.getAttribute("data-theme");
+    root.setAttribute("data-theme", "light");
+    const cs = getComputedStyle(el);
+    const out = { fill: rgbToHex(cs.backgroundColor), text: rgbToHex(cs.color) };
+    if (was === null) root.removeAttribute("data-theme"); else root.setAttribute("data-theme", was);
+    return out;
+  }
+
+  /** Turn the content of one table cell into docx paragraphs. */
+  function cellToParagraphs(D, cell, base = {}) {
+    const paras = [];
+    let runs = [];
+    const SKIP = ".m-more, .au-meter, .kd-flip, .link-btn, .visually-hidden, [aria-hidden='true'], input, .kd-turn, .ss-note";
+    const flush = (opts = {}) => {
+      if (runs.length) paras.push(new D.Paragraph({ children: runs, spacing: { after: 40 }, ...opts }));
+      runs = [];
+    };
+    const text = (t, fmt) => {
+      t = t.replace(/\s+/g, " ");
+      if (!t.trim() && !runs.length) return;
+      runs.push(new D.TextRun({ text: t, size: fmt.size || 17, bold: fmt.bold, italics: fmt.italics, color: fmt.color, font: "Calibri" }));
+    };
+    const walk = (node, fmt, bulletLevel) => {
+      if (node.nodeType === 3) { text(node.nodeValue, fmt); return; }
+      if (node.nodeType !== 1 || node.matches(SKIP) || node.hidden) return;
+      const tag = node.tagName, cls = node.classList;
+      if (tag === "UL" || tag === "OL") {
+        flush();
+        if (cls.contains("tags")) {           // sub-strand tags in the Understandings matrix
+          paras.push(new D.Paragraph({ children: [new D.TextRun({ text: "Sub-strands: ", bold: true, size: 15, color: "555555", font: "Calibri" }),
+            new D.TextRun({ text: [...node.querySelectorAll("li")].map((li) => li.textContent.trim()).join(", "), size: 15, color: "555555", font: "Calibri" })],
+            spacing: { before: 60, after: 40 } }));
+          return;
+        }
+        for (const li of node.children) {
+          if (li.tagName !== "LI") continue;
+          const sub = [...li.childNodes];
+          for (const c of sub) {
+            if (c.nodeType === 1 && (c.tagName === "UL" || c.tagName === "OL")) { flush({ numbering: { reference: "kd-bullets", level: bulletLevel } }); walk(c, fmt, bulletLevel + 1); }
+            else walk(c, fmt, bulletLevel);
+          }
+          flush({ numbering: { reference: "kd-bullets", level: bulletLevel } });
+        }
+        return;
+      }
+      if (tag === "BR") { runs.push(new D.TextRun({ break: 1 })); return; }
+      let f = fmt;
+      if (tag === "STRONG" || tag === "B" || tag === "H5" || cls.contains("m-on") || cls.contains("au-num")) f = { ...f, bold: true };
+      if (tag === "EM" || tag === "I" || cls.contains("none") || cls.contains("plan-also")) f = { ...f, italics: true, color: f.color || "666666" };
+      if (tag === "SMALL" || cls.contains("au-plans") || cls.contains("au-pct")) f = { ...f, size: 15, color: f.color || "555555" };
+      if (cls.contains("au-gap")) f = { ...f, bold: true, color: "A13A32" };
+      if (cls.contains("ss-tag")) {              // a sub-strand / origin label heading a group
+        flush();
+        paras.push(new D.Paragraph({ children: [new D.TextRun({ text: node.textContent.trim(), bold: true, size: 16, color: "1D2433", font: "Calibri" })],
+          spacing: { before: paras.length ? 120 : 0, after: 40 }, border: { bottom: { style: D.BorderStyle.SINGLE, size: 4, color: "B9C3C8", space: 1 } } }));
+        return;
+      }
+      if (cls.contains("kd-h")) f = { ...f, bold: true, color: cls.contains("do") || node.closest(".do") ? "2D7A4E" : "2B4F8F" };
+      if (tag === "DETAILS") {                     // notes: include them in full
+        flush();
+        const label = node.querySelector("summary")?.textContent.trim().replace(/\s*\(\d+\)$/, "") || "Notes";
+        paras.push(new D.Paragraph({ children: [new D.TextRun({ text: label, bold: true, italics: true, size: 16, color: "5B5480", font: "Calibri" })], spacing: { before: 80, after: 20 } }));
+        for (const c of node.children) if (c.tagName !== "SUMMARY") walk(c, { ...fmt, size: 16, color: "333333" }, bulletLevel);
+        flush();
+        return;
+      }
+      const block = /^(P|DIV|H[1-6]|SECTION|ARTICLE|LI)$/.test(tag);
+      if (block) flush();
+      for (const c of node.childNodes) walk(c, f, bulletLevel);
+      if (block) flush(tag === "H5" ? { spacing: { before: 60, after: 20 } } : {});
+    };
+    for (const c of cell.childNodes) walk(c, base, 0);
+    flush();
+    return paras.length ? paras : [new D.Paragraph({ children: [] })];
+  }
+
+  /** Build and download a .docx holding one HTML table. */
+  async function exportTableDocx(table, { title, subtitle, filename, ratios }) {
+    const D = await loadDocx();
+    const rows = [...table.querySelectorAll(":scope > thead > tr, :scope > tbody > tr, :scope > tr")];
+    const nCols = Math.max(...rows.map((r) => [...r.children].filter((c) => !c.hasAttribute("data-export-skip")).reduce((n, c) => n + (Number(c.getAttribute("colspan")) || 1), 0)));
+    const firstIsHead = rows.some((r) => r.parentElement.tagName === "TBODY" && r.children[0]?.tagName === "TH");
+    // landscape A4 content width ~ 15,400 dxa; narrower first column when rows have headings
+    const total = 15400, first = firstIsHead ? Math.min(2600, Math.round(total / (nCols + 1))) : Math.round(total / nCols);
+    const widths = ratios && ratios.length === nCols ? ratios.map((r) => Math.round(total * r)) : Array.from({ length: nCols }, (_, i) => (firstIsHead && i === 0 ? first : Math.round((total - (firstIsHead ? first : 0)) / (nCols - (firstIsHead ? 1 : 0)))));
+    const border = { style: D.BorderStyle.SINGLE, size: 4, color: "C9CED6" };
+    const docRows = rows.map((tr) => {
+      const isHead = tr.parentElement.tagName === "THEAD";
+      let col = 0;
+      const cells = [...tr.children].filter((c) => !c.hasAttribute("data-export-skip")).map((c) => {
+        const span = Number(c.getAttribute("colspan")) || 1;
+        const w = widths.slice(col, col + span).reduce((a, b) => a + b, 0); col += span;
+        const colours = lightColours(c);
+        const rowHead = !isHead && c.tagName === "TH";
+        let fill = isHead ? colours.fill || "1D2433" : rowHead ? "EEF1F6" : null;
+        if (!isHead && tr.classList.contains("r-u")) fill = rowHead ? "EEF1F6" : "F3EDF7";
+        const txt = isHead ? (colours.text && colours.fill ? colours.text : "FFFFFF") : undefined;
+        const kdColour = rowHead ? (tr.classList.contains("r-k") ? "2B4F8F" : tr.classList.contains("r-d") ? "2D7A4E" : tr.classList.contains("r-u") ? "6B3F8A" : undefined) : undefined;
+        return new D.TableCell({
+          width: { size: w, type: D.WidthType.DXA }, columnSpan: span > 1 ? span : undefined,
+          shading: fill ? { fill, type: D.ShadingType.CLEAR, color: "auto" } : undefined,
+          margins: { top: 60, bottom: 60, left: 90, right: 90 },
+          verticalAlign: isHead ? D.VerticalAlign.BOTTOM : D.VerticalAlign.TOP,
+          children: cellToParagraphs(D, c, isHead || rowHead ? { bold: true, size: isHead ? 18 : 17, color: txt || kdColour } : {}),
+        });
+      });
+      return new D.TableRow({ children: cells, tableHeader: isHead, cantSplit: false });
+    });
+    const docTable = new D.Table({
+      rows: docRows, width: { size: total, type: D.WidthType.DXA }, columnWidths: widths, layout: D.TableLayoutType.FIXED,
+      borders: { top: border, bottom: border, left: border, right: border, insideHorizontal: border, insideVertical: border },
+    });
+    const src = state.areas[state.area]?.doc.source || {};
+    const doc = new D.Document({
+      creator: "Curriculum Explorer", title,
+      numbering: { config: [{ reference: "kd-bullets", levels: [0, 1, 2].map((level) => ({
+        level, format: D.LevelFormat.BULLET, text: ["•", "◦", "▪"][level], alignment: D.AlignmentType.LEFT,
+        style: { paragraph: { indent: { left: 200 + level * 200, hanging: 160 } }, run: { size: 17 } },
+      })) }] },
+      styles: { default: { document: { run: { font: "Calibri", size: 18 } } } },
+      sections: [{
+        properties: { page: { size: { orientation: D.PageOrientation.LANDSCAPE }, margin: { top: 720, bottom: 720, left: 720, right: 720 } } },
+        footers: { default: new D.Footer({ children: [new D.Paragraph({ alignment: D.AlignmentType.RIGHT, children: [
+          new D.TextRun({ text: `${src.title || ""}${src.title ? " · " : ""}Exported ${new Date().toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })} · Page `, size: 14, color: "777777" }),
+          new D.TextRun({ children: [D.PageNumber.CURRENT], size: 14, color: "777777" })] })] }) },
+        children: [
+          new D.Paragraph({ heading: D.HeadingLevel.HEADING_1, children: [new D.TextRun({ text: title, bold: true, size: 32, color: "18222D", font: "Calibri" })], spacing: { after: 60 } }),
+          ...subtitle.filter(Boolean).map((t) => new D.Paragraph({ children: [new D.TextRun({ text: t, size: 18, color: "56626E", font: "Calibri" })], spacing: { after: 40 } })),
+          new D.Paragraph({ children: [], spacing: { after: 80 } }),
+          docTable,
+        ],
+      }],
+    });
+    const blob = await D.Packer.toBlob(doc);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").slice(0, 90) + ".docx";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+
+  /** Describe what the current page is showing, for the document's subtitle lines. */
+  function pageContext() {
+    const r = parseHash();
+    const parts = [];
+    const pressed = (sel) => [...main.querySelectorAll(sel)].filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.textContent.trim());
+    if (main.querySelector(".whole-toggle .chip[aria-pressed='true']")) parts.push("Includes statements without a sub-strand");
+    const filt = [...main.querySelectorAll(".filter:not(.whole-toggle), .multi-filter")].map((f) => {
+      const label = f.querySelector(":scope > span")?.textContent.trim();
+      const on = [...f.querySelectorAll("button[aria-pressed='true']")].map((b) => b.textContent.trim());
+      return label && on.length ? `${label}: ${on.join(", ")}` : "";
+    }).filter((x) => x && !/Know and Do$|All strands$|All$|Everything$|All year groups$|All levels$/.test(x));
+    if (r.view === "substrand") {
+      const subs = pressed(".sub-grid .sub-chip").filter((v, i, a) => a.indexOf(v) === i);
+      if (subs.length) parts.push(`Sub-strands: ${subs.join(", ")}`);
+    }
+    if (filt.length) parts.push(filt.join(" · "));
+    return parts;
+  }
+
+  async function handleExport(btn) {
+    const kind = btn.dataset.export;
+    const ix = state.areas[state.area];
+    const areaName = ix?.doc.name || "";
+    const h1 = main.querySelector(".page-head h1, .fld-name input")?.textContent?.trim() || main.querySelector(".fld-name input")?.value || "";
+    const old = btn.innerHTML;
+    btn.disabled = true; btn.textContent = "Preparing…";
+    let holder = null;
+    try {
+      let table, title, sub = [], filename, ratios;
+      if (kind === "kd") {
+        // re-draw this table in the stacked layout (cards and side-by-side are screen layouts) off screen
+        const block = btn.closest(".kd-block");
+        const t = KD_TABLES.get(block.id);
+        holder = document.createElement("div");
+        holder.className = "export-holder"; holder.setAttribute("aria-hidden", "true");
+        holder.innerHTML = kdTable(t.cols, { ...t.o, condensed: false }, { ...t.opts, id: `${t.opts.id}-x`, layout: "stacked" });
+        KD_TABLES.delete(`${t.opts.id}-x`);
+        main.appendChild(holder);
+        table = holder.querySelector("table");
+        const section = block.closest(".level-section")?.querySelector(".section-title")?.textContent.trim();
+        title = section ? `${h1} – ${section}` : t.opts.label && t.opts.label.startsWith(h1) ? t.opts.label : h1;
+        const show = t.o.showKD === "k" ? "Know statements" : t.o.showKD === "d" ? "Do statements" : "Know and Do statements";
+        sub = [`${areaName} · ${show}`, ...pageContext()];
+      } else if (kind === "plan") {
+        const plan = getPlan(parseHash().a);
+        const groups = new Map();
+        for (const code of plan.statements || []) {
+          const h = ix.statements.get(code);
+          if (!h) continue;
+          const key = `${h.strand.slug}|${h.depth > 0 ? h.node.slug : "_whole"}|${h.block.level}`;
+          if (!groups.has(key)) groups.set(key, { strand: h.strand, sub: h.depth > 0 ? h.node.name : "Whole strand", level: h.block.level, know: [], do: [] });
+          if (h.s.kind === "know" || h.s.kind === "do") groups.get(key)[h.s.kind].push(h.s.body);
+        }
+        const list = (xs) => xs.length ? `<ul>${xs.map((x) => `<li>${inlineMd(x)}</li>`).join("")}</ul>` : `<p class="none">None</p>`;
+        const multiLevel = new Set([...groups.values()].map((g) => g.level)).size > 1;
+        holder = document.createElement("div");
+        holder.className = "export-holder"; holder.setAttribute("aria-hidden", "true");
+        holder.innerHTML = `<table class="ss-table ${lvlClass(plan.level)}"><thead><tr><th>Strand</th><th>Sub-strand</th><th>Know</th><th>Do</th></tr></thead><tbody>${
+          [...groups.values()].map((g) => `<tr><th>${esc(g.strand.name)}</th><td><p>${esc(g.sub)}</p>${multiLevel ? `<p class="none">${LEVEL_NAME[g.level]} Level</p>` : ""}</td><td>${list(g.know)}</td><td>${list(g.do)}</td></tr>`).join("")
+          || `<tr><td colspan="4"><p class="none">No statements chosen yet.</p></td></tr>`}</tbody></table>`;
+        main.appendChild(holder);
+        table = holder.querySelector("table");
+        title = plan.name || "Untitled plan";
+        ratios = [0.18, 0.14, 0.34, 0.34];
+        sub = [`${areaName} · ${plan.yearGroup} · ${LEVEL_NAME[plan.level]} Level`, plan.description ? `What is planned: ${plan.description}` : ""];
+      } else {
+        const scope = btn.closest("[data-export-scope]") || main;
+        table = scope.querySelector("table");
+        title = btn.dataset.exportTitle || h1;
+        sub = [areaName, ...(kind === "audit" ? [main.querySelector(".master-h small")?.textContent.trim()] : []), ...pageContext()];
+      }
+      filename = `${areaName} ${title}`;
+      await exportTableDocx(table, { title, subtitle: sub, filename, ratios });
+      btn.textContent = "Saved ✓";
+      setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 1500);
+    } catch (err) {
+      btn.innerHTML = old; btn.disabled = false;
+      alert(err.message || "The Word document could not be created.");
+    } finally {
+      holder?.remove();
+    }
+  }
+
   function scrollToId(id) {
     const el = document.getElementById(id);
     if (el) requestAnimationFrame(() => el.scrollIntoView({ block: "start" }));
@@ -1323,6 +1576,8 @@
   main.addEventListener("focusin", linkSubs);
 
   main.addEventListener("click", (e) => {
+    const exp = e.target.closest("button[data-export]");
+    if (exp) { handleExport(exp); return; }
     if (parseHash().view === "planner" && auditClick(e)) return;
     if (parseHash().view === "planner" && e.target.closest("[data-plan-new], [data-plan-del], [data-plan-dup], [data-plan-export], [data-plan-print], [data-pf], [data-unpick], [data-tray-link]")) {
       e.preventDefault();
